@@ -1,3 +1,7 @@
+# What is this?
+
+This code numerically computes the energy levels for a hetronuclear molecule modeled as a rigid rotor within in a DC electric field.
+
 # Installation
 
 ```bash
