@@ -1,6 +1,7 @@
 requirements.txt
 .idea/
 animation/
+OBAnim/
 
 # General
 .DS_Store
