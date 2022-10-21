@@ -2,6 +2,8 @@
 
 This code numerically computes the energy levels for a hetronuclear molecule modeled as a rigid rotor within in a DC electric field.
 
+![Animation of angular wavefunction with increasing E](/images/Animation.gif)
+
 ![energy level splitting diagram](/images/DCStarkRigidRotor.png)
 
 # Installation
