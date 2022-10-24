@@ -1,7 +1,8 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: ipynb,py:percent,md
+#     cell_markers: '"""'
+#     formats: ipynb,py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -14,7 +15,9 @@
 # ---
 
 # %% [markdown]
-# # Import appropriate modules
+"""
+# Import appropriate modules
+"""
 
 # %%
 import numpy as np
@@ -35,7 +38,9 @@ plt.rcParams['text.usetex'] = True
 # %config InlineBackend.figure_format = 'retina'
 
 # %% [markdown]
-# # Define constants
+"""
+# Define constants
+"""
 
 # %%
 # Physical Constants
@@ -53,8 +58,10 @@ EMAX = 12  # Max E Field in kV/cm
 ESTEPS = 50
 
 # %% [markdown]
-# # Create empty Hamiltonians
-# basis order  |0, 0>  |1,-1>  |1, 0>  |1,+1> ....
+"""
+# Create empty Hamiltonians
+basis order  |0, 0>  |1,-1>  |1, 0>  |1,+1> ....
+"""
 
 # %%
 size = 1 + 2 * NMAX + NMAX**2
@@ -63,25 +70,27 @@ Hrot = np.zeros((size, size), dtype=np.cdouble)
 Hdc = np.zeros((size, size), dtype=np.cdouble)
 
 # %% [markdown]
-# # Populate Rotational Hamiltonian
-# $$
-# H_{rot}=\frac{J^2}{2I}=\frac{J^2}{2\mu R^2}
-# $$
-# Which has spherical harmonic solutions
-# $$
-# \frac{J^2}{2I} |Y_{l,m}> = \frac{\hbar^2}{2I} l(l+1) |Y_{l,m}>
-# $$
-# $$
-# E_{l,m} = \frac{\hbar^2}{2I} l(l+1) = B_0 l(l+1)
-# $$
-# Expanding in spherical harmonic basis
-# $$
-# <Y_{l',m'}|H_{rot}|Y_{l,m}> =
-# \begin{cases}
-#     B_0 l(l+1), & \text{if}\ l'=l, m'=m \\
-#     0, & \text{otherwise}
-# \end{cases}
-# $$
+r"""
+# Populate Rotational Hamiltonian
+$$
+H_{rot}=\frac{J^2}{2I}=\frac{J^2}{2\mu R^2}
+$$
+Which has spherical harmonic solutions
+$$
+\frac{J^2}{2I} |Y_{l,m}> = \frac{\hbar^2}{2I} l(l+1) |Y_{l,m}>
+$$
+$$
+E_{l,m} = \frac{\hbar^2}{2I} l(l+1) = B_0 l(l+1)
+$$
+Expanding in spherical harmonic basis
+$$
+<Y_{l',m'}|H_{rot}|Y_{l,m}> =
+\begin{cases}
+    B_0 l(l+1), & \text{if}\ l'=l, m'=m \\
+    0, & \text{otherwise}
+\end{cases}
+$$
+"""
 
 # %%
 s = 0
@@ -92,34 +101,36 @@ for N in range(0, NMAX + 1):
         s += 1
 
 # %% [markdown]
-# # Populate DC Stark Hamiltonian
-# $$H_{st} = -\bf{d}\cdot\bf{\epsilon} = -\epsilon\bf{d}\cdot\bf{\hat{z}} = -\epsilon d_{mol} \cos\theta$$
-# $$<Y_{l',m'}|H_{st}|Y_{l,m}> = -d_0\epsilon\int\int Y_{l',m'}^* \cos\theta Y_{l,m}$$
-# using the following identity where the bracketed terms are compact notation for Wigner-3j coefficients
-# $$\int\int Y_{A,i}(\theta,\phi)Y_{B,j}(\theta,\phi)Y_{C,k}(\theta,\phi) d^2\Omega =
-# \left[\frac{(2A+1)(2B+1)(2C+1)}{4\pi}\right]^{\frac{1}{2}}
-# \begin{pmatrix}
-# A & B & C\\
-# 0 & 0 & 0
-# \end{pmatrix}
-# \begin{pmatrix}
-# A & B & C\\
-# i & j & k
-# \end{pmatrix}
-# $$
-# Along with the fact
-# $$ cos\theta = Y_{1,0}\sqrt{\frac{4\pi}{3}}$$
-# we get
-# $$<Y_{l',m'}|H_{st}|Y_{l,m}> = -d_0\epsilon\sqrt{(2l+1)(2l'+1)}(-1)^{m'}
-# \begin{pmatrix}
-# l' & 1 & l\\
-# -m' & 0 & m
-# \end{pmatrix}
-# \begin{pmatrix}
-# l' & 1 & l\\
-# 0 & 0 & 0
-# \end{pmatrix}$$
-# This has non-zero elements only for $\Delta l = \pm 1$ and $\Delta m = 0$
+r"""
+# Populate DC Stark Hamiltonian
+$$H_{st} = -\bf{d}\cdot\bf{\epsilon} = -\epsilon\bf{d}\cdot\bf{\hat{z}} = -\epsilon d_{mol} \cos\theta$$
+$$<Y_{l',m'}|H_{st}|Y_{l,m}> = -d_0\epsilon\int\int Y_{l',m'}^* \cos\theta Y_{l,m}$$
+using the following identity where the bracketed terms are compact notation for Wigner-3j coefficients
+$$\int\int Y_{A,i}(\theta,\phi)Y_{B,j}(\theta,\phi)Y_{C,k}(\theta,\phi) d^2\Omega =
+\left[\frac{(2A+1)(2B+1)(2C+1)}{4\pi}\right]^{\frac{1}{2}}
+\begin{pmatrix}
+A & B & C\\
+0 & 0 & 0
+\end{pmatrix}
+\begin{pmatrix}
+A & B & C\\
+i & j & k
+\end{pmatrix}
+$$
+Along with the fact
+$$ cos\theta = Y_{1,0}\sqrt{\frac{4\pi}{3}}$$
+we get
+$$<Y_{l',m'}|H_{st}|Y_{l,m}> = -d_0\epsilon\sqrt{(2l+1)(2l'+1)}(-1)^{m'}
+\begin{pmatrix}
+l' & 1 & l\\
+-m' & 0 & m
+\end{pmatrix}
+\begin{pmatrix}
+l' & 1 & l\\
+0 & 0 & 0
+\end{pmatrix}$$
+This has non-zero elements only for $\Delta l = \pm 1$ and $\Delta m = 0$
+"""
 
 # %%
 i = 0
@@ -140,7 +151,9 @@ for N1 in range(0, NMAX + 1):
         i += 1
 
 # %% [markdown]
-# # Form and Diagonalise total Hamiltonian
+"""
+# Form and Diagonalise total Hamiltonian
+"""
 
 # %%
 E = np.linspace(EMIN, EMAX, ESTEPS) * 1e5  # V/m
@@ -150,8 +163,10 @@ Htot = Htot.transpose(2, 0, 1)
 energies, states = eigh(Htot)
 
 # %% [markdown]
-# # Sort states
-# The `eigh` function sorts the states by increasing energy and so will rearange order of vectors
+"""
+# Sort states
+The `eigh` function sorts the states by increasing energy and so will rearange order of vectors
+"""
 
 # %%
 M = np.matrix([[1,0,0],
@@ -204,10 +219,14 @@ def sort_smooth(in_energies, in_states):
 smooth_energies, smooth_states = sort_smooth(energies, states)
 
 # %% [markdown]
-# # Sort with state labels
+"""
+# Sort with state labels
+"""
 
 # %% [markdown]
-# # Looking at Coefficient mixing (debug)
+"""
+# Looking at Coefficient mixing (debug)
+"""
 
 # %%
 fig=plt.figure()
@@ -224,7 +243,9 @@ plt.ylim(0,1)
 plt.show()
 
 # %% [markdown]
-# # Plot Energies against E strength
+"""
+# Plot Energies against E strength
+"""
 
 # %%
 plt.figure()
@@ -245,17 +266,26 @@ for N in range(0, NMAX + 1):
 plt.show()
 
 # %% [markdown]
-# # Generalised Units
+"""
+# Generalised Units
+"""
+
+# %% [markdown]
+"""
+
+"""
 
 # %%
 # Generalised Units code
 
 # %% [markdown]
-# # Lab frame Dipole Moments
-#
-# $$
-# <\psi_i|d_z|\psi_i> = -\frac{d}{dE} <\psi_i|H|\psi_i> = -\frac{d\epsilon_i}{dE}
-# $$
+r"""
+# Lab frame Dipole Moments
+
+$$
+<\psi_i|d_z|\psi_i> = -\frac{d}{dE} <\psi_i|H|\psi_i> = -\frac{d\epsilon_i}{dE}
+$$
+"""
 
 # %%
 plt.figure()
@@ -275,27 +305,29 @@ for N in range(0, NMAX + 1):
 plt.show()
 
 # %% [markdown]
-# # Transition Dipole Moments
-# We can directly calculate the dipole matrix elements for $d_j=d_0 Y_{1,j}$, for $j=0,+1,-1$ representing different polarisations of light on the spherical harmonics:
-# $$
-# <N,M_N|d_j|N',M_N'> = d_0 \int\int Y_{N,M_N}^* Y_{1,j} Y_{N',M_N'} d^2\Omega
-# $$
-# Once again using the Wigner-3j coefficient symbols:
-# $$
-# <N,M_N|d_j|N',M_N'> = d_0 \sqrt{(2N+1)(2N'+1)} (-1)^{M_N}
-# \begin{pmatrix}
-# N & 1 & N'\\
-# -M_N & j & M_n'
-# \end{pmatrix}
-# \begin{pmatrix}
-# N & 1 & N'\\
-# 0 & 0 & 0
-# \end{pmatrix}
-# $$
-# We can get the E field dependence by decomposing our new computed E-dependent eigenstates into spherical harmonics and summing the dipole operators for each.
-# $$
-# |N',M_N'> = \sum_{N=0}^{\infty}\sum_{M_N=-N}^{N} c_{M,M_N}Y_{M,M_N}
-# $$
+r"""
+# Transition Dipole Moments
+We can directly calculate the dipole matrix elements for $d_j=d_0 Y_{1,j}$, for $j=0,+1,-1$ representing different polarisations of light on the spherical harmonics:
+$$
+<N,M_N|d_j|N',M_N'> = d_0 \int\int Y_{N,M_N}^* Y_{1,j} Y_{N',M_N'} d^2\Omega
+$$
+Once again using the Wigner-3j coefficient symbols:
+$$
+<N,M_N|d_j|N',M_N'> = d_0 \sqrt{(2N+1)(2N'+1)} (-1)^{M_N}
+\begin{pmatrix}
+N & 1 & N'\\
+-M_N & j & M_n'
+\end{pmatrix}
+\begin{pmatrix}
+N & 1 & N'\\
+0 & 0 & 0
+\end{pmatrix}
+$$
+We can get the E field dependence by decomposing our new computed E-dependent eigenstates into spherical harmonics and summing the dipole operators for each.
+$$
+|N',M_N'> = \sum_{N=0}^{\infty}\sum_{M_N=-N}^{N} c_{M,M_N}Y_{M,M_N}
+$$
+"""
 
 # %%
 J=0
@@ -331,8 +363,10 @@ for state_1, state_2 in [(0,0),(2,2),(0,2),(3,3)]:
 plt.show()
 
 # %% [markdown]
-# # Convergence depending on Energy level
-# The addition of a E-field mixes higher rotational states into lower rotational states. Because the matrix used to perform diagonalisation of our Hamiltonian is finite, it cannot have mixing of states past some N. We need to check values are convervent when leaving out these higher order rotational states
+"""
+# Convergence depending on Energy level
+The addition of a E-field mixes higher rotational states into lower rotational states. Because the matrix used to perform diagonalisation of our Hamiltonian is finite, it cannot have mixing of states past some N. We need to check values are convervent when leaving out these higher order rotational states
+"""
 
 # %%
 converged_dipoles = []
@@ -350,9 +384,11 @@ plt.ylabel("Dipole Moment")
 plt.xlabel("Max N in Basis")
 plt.show()
 
-
 # %% [markdown]
-# # Plot Functions on a Sphere
+"""
+# Plot Functions on a Sphere
+"""
+
 
 # %%
 def f_sph_polar_to_cart_surf(f, resolution=50):
@@ -399,7 +435,9 @@ fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 surface_plot(fxs, fys, fzs, ax)
 
 # %% [markdown]
-# # Plot the eigenstates under stark shift
+"""
+# Plot the eigenstates under stark shift
+"""
 
 # %%
 # Grids of polar and azimuthal angles
@@ -426,7 +464,9 @@ fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 surface_plot(Yx, Yy, Yz, ax)
 
 # %% [markdown]
-# # E shifting Animation
+"""
+# E shifting Animation
+"""
 
 # %%
 import matplotlib.gridspec as gridspec
@@ -467,3 +507,5 @@ for e_number in [ESTEPS-1]:
     fig.suptitle(f'E = {E[e_number]*1e-5:.2f} kV/cm', fontsize=16)
     filename=f'animation/image{e_number:03}.png'
     fig.savefig(filename, dpi=300)
+
+# %%
