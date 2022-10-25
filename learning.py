@@ -31,6 +31,7 @@ from sympy.physics.wigner import wigner_3j
 
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
+import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 plt.rcParams['text.usetex'] = True
 
@@ -51,16 +52,20 @@ D_MOL = 1.225 * 3.33564e-30  # Molecular dipole moment (C.m)
 BROT = 490.173994326310e6 * scipy.constants.h  # BROT := HBAR^2/2I
 
 # Computational Constants
-NMAX = 5  #  No. of Rotational base states 0 <= N <= NMAX
+NMAX = 8  #  No. of Rotational base states 0 <= N <= NMAX
 
-EMIN = 0
+EMIN = 0 # Min E Field in kV/cm, non-zero to stop 3-fold degeneracy at 0 field.
 EMAX = 12  # Max E Field in kV/cm
-ESTEPS = 50
+ESTEPS = 50 # Resolution of E Field range
 
 # %% [markdown]
-"""
-# Create empty Hamiltonians
-basis order  |0, 0>  |1,-1>  |1, 0>  |1,+1> ....
+r"""
+# Create empty Hamiltonians to be expanded in ordered basis:
+|0, 0>  |1,-1>  |1, 0>  |1,+1> ....
+Each N has 2N+1 degeneracy at 0 E-field. Counting the number of states:
+$$
+\sum_{N=0}^{NMAX} 2N + 1 = 1 + 2\sum_{N=1}^{NMAX} N + \sum_{N=1}^{NMAX} 1 = 1 + NMAX(NMAX+1) + NMAX = 1 + 2NMAX + NMAX^2
+$$
 """
 
 # %%
@@ -68,6 +73,21 @@ size = 1 + 2 * NMAX + NMAX**2
 # Size of matrix is no. of states, 2N+1 states for each N
 Hrot = np.zeros((size, size), dtype=np.cdouble)
 Hdc = np.zeros((size, size), dtype=np.cdouble)
+Hsplit = np.zeros((size, size), dtype=np.cdouble)
+
+# %% [markdown]
+"""
+# Nice enumeration over states
+We somehow want to be able to iterate over states and have at once,
+their label |N,m> and also their position in the matrix. Let's define a new interator...
+"""
+
+# %%
+def state_iter(NMAX):
+    return enumerate([(N,M) for N in range(0, NMAX+1) for M in range(-N, N+1)])
+
+for s, (N, M) in state_iter(2):
+    print("pos:",s,"N,M=",N,M)
 
 # %% [markdown]
 r"""
@@ -93,12 +113,9 @@ $$
 """
 
 # %%
-s = 0
-for N in range(0, NMAX + 1):
+for i, (N, M) in state_iter(NMAX):
     Erot = BROT * N * (N + 1)
-    for M in range(-N, N + 1):
-        Hrot[s, s] = Erot
-        s += 1
+    Hrot[i, i] = Erot
 
 # %% [markdown]
 r"""
@@ -129,26 +146,32 @@ l' & 1 & l\\
 l' & 1 & l\\
 0 & 0 & 0
 \end{pmatrix}$$
-This has non-zero elements only for $\Delta l = \pm 1$ and $\Delta m = 0$
+This has non-zero elements only for $\Delta l = \pm 1$ and $\Delta m = 0$ 
 """
 
 # %%
-i = 0
-j = 0
-for N1 in range(0, NMAX + 1):
-    for M1 in range(-N1, N1 + 1):
-        for N2 in range(0, NMAX + 1):
-            for M2 in range(-N2, N2 + 1):
-                Hdc[i, j] = (
-                    -D_MOL
-                    * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
-                    * (-1) ** M1
-                    * wigner_3j(N1, 1, N2, -M1, 0, M2)
-                    * wigner_3j(N1, 1, N2, 0, 0, 0)
-                )
-                j += 1
-        j = 0
-        i += 1
+for i, (N1, M1) in state_iter(NMAX):
+    for j, (N2, M2) in state_iter(NMAX):
+        Hdc[i, j] = (
+                -D_MOL
+                * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
+                * (-1) ** M1
+                * wigner_3j(N1, 1, N2, -M1, 0, M2)
+                * wigner_3j(N1, 1, N2, 0, 0, 0)
+        )
+
+# %% [markdown]
+"""
+# Split degeneracy for solver
+We will also add a minor splitting between states with the same $|M_N|$.
+Otherwise since they have degenerate energies, the solver can arbitrarily pick a different spanning basis 
+of $|N,M_N>\otimes|N,-M_N>$.
+"""
+
+# %%
+for i, (N, M) in state_iter(NMAX):
+    if M<0:
+        Hsplit[i, i] = -1e-32
 
 # %% [markdown]
 """
@@ -157,7 +180,7 @@ for N1 in range(0, NMAX + 1):
 
 # %%
 E = np.linspace(EMIN, EMAX, ESTEPS) * 1e5  # V/m
-Htot = Hrot[..., None] + Hdc[..., None] * E
+Htot = Hrot[..., None] + Hdc[..., None] * E + Hsplit[..., None]
 Htot = Htot.transpose(2, 0, 1)
 
 energies, states = eigh(Htot)
@@ -216,12 +239,7 @@ def sort_smooth(in_energies, in_states):
                 in_states[i,:,k] = orig2[:,l].copy()
     return in_energies, in_states
 
-smooth_energies, smooth_states = sort_smooth(energies, states)
-
-# %% [markdown]
-"""
-# Sort with state labels
-"""
+energies, states = sort_smooth(energies, states)
 
 # %% [markdown]
 """
@@ -229,13 +247,14 @@ smooth_energies, smooth_states = sort_smooth(energies, states)
 """
 
 # %%
-fig=plt.figure()
-state=1
+plt.figure()
+
+state = 3 # Change me
 coefs = []
 for coefn in range(size):
     coefs.append(np.abs(states[:,coefn,state])**2)
 
-plt.stackplot(E, coefs)
+plt.stackplot(E * 1e-5, coefs)
 
 plt.xlabel("E")
 plt.ylabel(r'$|c_n|^2$')
@@ -249,30 +268,20 @@ plt.show()
 
 # %%
 plt.figure()
-plt.xlim(0, EMAX)
-#plt.ylim(-2000, 25000)
-plt.ylabel("Energy/h (MHz)")
+
+colours = cm.rainbow(np.linspace(0, 1, NMAX+1))
+for i, (N, M) in state_iter(NMAX):
+    plt.plot(E * 1e-5, energies[:, i] * 1e-6 / scipy.constants.h, color=colours[N])
+
 plt.xlabel("Electric Field (kV/cm)")
-
-color = cm.rainbow(np.linspace(0, 1, NMAX+1))
-c=0
-n=0
-for N in range(0, NMAX + 1):
-    for M in range(-N, N + 1):
-        plt.plot(E * 1e-5, energies[:, n] * 1e-6 / scipy.constants.h, color=color[c])
-        n+=1
-    c+=1
-
+plt.ylabel("Energy/h (MHz)")
+#plt.xlim(0, 0.02)
+#plt.ylim(980.2,980.5)
 plt.show()
 
 # %% [markdown]
 """
 # Generalised Units
-"""
-
-# %% [markdown]
-"""
-
 """
 
 # %%
@@ -281,7 +290,7 @@ plt.show()
 # %% [markdown]
 r"""
 # Lab frame Dipole Moments
-
+We can get the lab frame expected dipole moments from the negative derivative of the energies.
 $$
 <\psi_i|d_z|\psi_i> = -\frac{d}{dE} <\psi_i|H|\psi_i> = -\frac{d\epsilon_i}{dE}
 $$
@@ -289,19 +298,14 @@ $$
 
 # %%
 plt.figure()
-plt.xlim(0, EMAX)
-plt.ylabel("Dipole Moment")
+
+colours = cm.rainbow(np.linspace(0, 1, NMAX+1))
+for i, (N,M) in state_iter(NMAX):
+    plt.plot(E * 1e-5, -np.gradient(energies[:, i], E)/D_MOL, color=colours[N])
+
 plt.xlabel("Electric Field (kV/cm)")
-
-color = cm.rainbow(np.linspace(0, 1, NMAX+1))
-c=0
-n=0
-for N in range(0, NMAX + 1):
-    for M in range(-N, N + 1):
-        plt.plot(E * 1e-5, -np.gradient(energies[:, n]), color=color[c])
-        n+=1
-    c+=1
-
+plt.ylabel("Dipole Moment ($d_0$)")
+plt.xlim(0, EMAX)
 plt.show()
 
 # %% [markdown]
@@ -330,36 +334,29 @@ $$
 """
 
 # %%
-J=0
-
 plt.figure()
-plt.xlim(0, EMAX)
-plt.ylim(-0.3, 0.8)
-plt.ylabel("Dipole Moment ($d_0$)")
-plt.xlabel("Electric Field (kV/cm)")
+
+states_to_show = [(0,0,0),(3,3,0),(2,2,0),(3,0,1),(0,2,0)] # (State1,State2,Polarisation)
 
 # Get coefficients
-for state_1, state_2 in [(0,0),(2,2),(0,2),(3,3)]:
+for state_1, state_2, P in states_to_show:
     this_dipole_moment = np.zeros(ESTEPS, dtype=np.cdouble)
-    i=0
-    j=0
-    for N1 in range(0, NMAX + 1):
-        for M1 in range(-N1, N1 + 1):
-            for N2 in range(0, NMAX + 1):
-                for M2 in range(-N2, N2 + 1):
-                    wig = complex(wigner_3j(N1, 1, N2, -M1, J, M2) * wigner_3j(N1, 1, N2, 0, 0, 0))
-                    this_dipole_moment += (
-                            states[:,i,state_1] * states[:,j,state_2]
-                            * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
-                            * (-1) ** M1
-                            * wig
-                    )
-                    j+=1
-            j=0
-            i+=1
+    for i, (N1, M1) in state_iter(NMAX):
+        for j, (N2, M2) in state_iter(NMAX):
+            wig = complex(wigner_3j(N1, 1, N2, -M1, P, M2) * wigner_3j(N1, 1, N2, 0, 0, 0))
+            this_dipole_moment += (
+                    states[:, i, state_1] * states[:, j, state_2]
+                    * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
+                    * (-1) ** M1
+                    * wig
+            )
 
     plt.plot(E * 1e-5, this_dipole_moment)
 
+plt.xlabel("Electric Field (kV/cm)")
+plt.ylabel("Dipole Moment ($d_0$)")
+plt.xlim(0, EMAX)
+#plt.ylim(-1.0, 1.0)
 plt.show()
 
 # %% [markdown]
@@ -369,19 +366,20 @@ The addition of a E-field mixes higher rotational states into lower rotational s
 """
 
 # %%
+plt.figure()
+
 converged_dipoles = []
 for N in range(1, NMAX+1):
     size = 1 + 2 * N + N**2
     convergence_Htot = Hrot[:size,:size, None] + Hdc[:size,:size, None] * E
     convergence_Htot = convergence_Htot.transpose(2, 0, 1)
     convergence_energies, convergence_states = eigh(convergence_Htot)
-    convergence_dipoles = -np.gradient(convergence_energies[:, 0])
+    convergence_dipoles = -np.gradient(convergence_energies[:, 0], E)/D_MOL
     converged_dipoles.append(convergence_dipoles[-2])
 
-fig = plt.figure()
 plt.scatter(list(range(1,NMAX+1)), converged_dipoles)
-plt.ylabel("Dipole Moment")
 plt.xlabel("Max N in Basis")
+plt.ylabel("Dipole Moment ($d_0$)")
 plt.show()
 
 # %% [markdown]
@@ -433,6 +431,7 @@ f = lambda theta_grid, phi_grid : 0.8*sph_harm(1, 1, phi_grid, theta_grid)+0.2*s
 fxs, fys, fzs = f_sph_polar_to_cart_surf(f)
 fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 surface_plot(fxs, fys, fzs, ax)
+fig.show()
 
 # %% [markdown]
 """
@@ -448,20 +447,17 @@ theta_grid, phi_grid = np.meshgrid(theta, phi)
 # Calculate the unit sphere Cartesian coordinates of each (theta, phi).
 xyz = np.array([np.sin(theta_grid) * np.sin(phi_grid), np.sin(theta_grid) * np.cos(phi_grid), np.cos(theta_grid)])
 
-state=3
-e_number=ESTEPS-1
-n=0
-f_grid = np.zeros((50, 50), dtype=np.cdouble)
-for N in range(0, NMAX + 1):
-    for M in range(-N, N + 1):
-        coef = states[e_number][:,state][n]
-        f_grid += coef * sph_harm(M, N, phi_grid, theta_grid)
-        n+=1
+state=3 # Change me
+e_number=ESTEPS-1 # Change me
 
-# get final output cartesian coords
-Yx, Yy, Yz = np.abs(f_grid) * xyz
+f_grid = np.zeros((50, 50), dtype=np.cdouble)
+for i, (N,M) in state_iter(NMAX):
+    f_grid += states[e_number, i, state] * sph_harm(M, N, phi_grid, theta_grid)
+Yx, Yy, Yz = np.abs(f_grid) * xyz # get final output cartesian coords
+
 fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 surface_plot(Yx, Yy, Yz, ax)
+fig.show()
 
 # %% [markdown]
 """
@@ -469,11 +465,10 @@ surface_plot(Yx, Yy, Yz, ax)
 """
 
 # %%
-import matplotlib.gridspec as gridspec
-el_max = 2
+SHOW_NMAX = 2 # Change me
 
 fig = plt.figure()
-spec = gridspec.GridSpec(ncols=2*el_max+1, nrows=el_max+1, figure=fig, wspace=0, hspace=0)
+spec = gridspec.GridSpec(ncols=2 * SHOW_NMAX + 1, nrows=SHOW_NMAX + 1, figure=fig, wspace=0, hspace=0)
 
 # Grids of polar and azimuthal angles
 theta = np.linspace(0, np.pi, 50)
@@ -483,29 +478,19 @@ theta_grid, phi_grid = np.meshgrid(theta, phi)
 # Calculate the unit sphere Cartesian coordinates of each (theta, phi).
 xyz = np.array([np.sin(theta_grid) * np.sin(phi_grid), np.sin(theta_grid) * np.cos(phi_grid), np.cos(theta_grid)])
 
-#e_number=0
-for e_number in [ESTEPS-1]:
+for e_number in range(0,ESTEPS,ESTEPS-2):
     fig.clf()
-    state=0
-    for el in range(el_max+1):
-        for m_el in range(-el, el+1):
-            ax = fig.add_subplot(spec[el, m_el+el_max], projection='3d')
 
-            n=0
-            f_grid = np.zeros((50, 50), dtype=np.cdouble)
-            for N in range(0, NMAX + 1):
-                for M in range(-N, N + 1):
-                    coef = states[e_number][:,state][n]
-                    f_grid += coef * sph_harm(M, N, phi_grid, theta_grid)
-                    n+=1
-
-            Yx, Yy, Yz = np.abs(f_grid) * xyz
-            surface_plot(Yx, Yy, Yz, ax)
-
-            state+=1
+    for showi, (showN,showM) in state_iter(SHOW_NMAX):
+        ax = fig.add_subplot(spec[showN, showM + SHOW_NMAX], projection='3d')
+        f_grid = np.zeros((50, 50), dtype=np.cdouble)
+        for j, (N,M) in state_iter(NMAX):
+            f_grid += states[e_number, j, showi] * sph_harm(M, N, phi_grid, theta_grid)
+        Yx, Yy, Yz = np.abs(f_grid) * xyz
+        surface_plot(Yx, Yy, Yz, ax)
 
     fig.suptitle(f'E = {E[e_number]*1e-5:.2f} kV/cm', fontsize=16)
     filename=f'animation/image{e_number:03}.png'
     fig.savefig(filename, dpi=300)
+    fig.show()
 
-# %%
