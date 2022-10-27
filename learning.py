@@ -45,23 +45,29 @@ plt.rcParams['text.usetex'] = True
 
 # %%
 # Physical Constants
-HBAR = scipy.constants.hbar
+H_BAR = scipy.constants.hbar
 
 # Molecular Constants
-D_MOL = 1.225 * 3.33564e-30  # Molecular dipole moment (C.m)
-BROT = 490.173994326310e6 * scipy.constants.h  # BROT := HBAR^2/2I
+D_0 = 1.225 * 3.33564e-30  # Molecular dipole moment (C.m)
+B_0 = 490.173994326310e6 * scipy.constants.h  # B_0 := H_BAR^2/2I
 
 # Global Computational Constants
-NMAX = 4  #  No. of Rotational base states 0 <= N <= NMAX
+N_MAX = 7  #  No. of Rotational base states 0 <= N <= N_MAX
 
-EMIN = 1e-3 # Min E Field in kV/cm, non-zero to stop 3-fold degeneracy at 0 field.
-EMAX = 10  # Max E Field in kV/cm
-ESTEPS = 200 # Resolution of E Field range
+E_MIN = 1e-2 # Min E Field in kV/cm, non-zero to stop 3-fold degeneracy at 0 field.
+E_MAX = 20  # Max E Field in kV/cm
+E_STEPS = 200 # Resolution of E Field range
+
+POLAR_PLOT_RES = 50
+
+# Derived Constants
+STATE_COUNT = 1 + 2 * N_MAX + N_MAX ** 2
+N_COLOURS = cm.rainbow(np.linspace(0, 1, N_MAX + 1))
 
 # %% [markdown]
 r"""
 # Create empty Hamiltonians to be expanded in ordered basis:
-|0,0>  |1,0>  |1,-1>  |1,+1>  |2,0>  |2,-1> ....
+|0,0> |1,-1>  |1,+1> |1,0> |2,-2>  |2,+2> ....
 Each N has 2N+1 degeneracy at 0 E-field. Counting the number of states:
 $$
 \sum_{N=0}^{N_{MAX}} 2N + 1 = 1 + 2\sum_{N=1}^{N_{MAX}} N + \sum_{N=1}^{N_{MAX}} 1 = 1 + N_{MAX}(N_{MAX}+1) + N_{MAX} = 1 + 2N_{MAX} + N_{MAX}^2
@@ -69,10 +75,9 @@ $$
 """
 
 # %%
-size = 1 + 2 * NMAX + NMAX**2
-Hrot = np.zeros((size, size), dtype=np.cdouble)
-Hdc = np.zeros((size, size), dtype=np.cdouble)
-Hsplit = np.zeros((size, size), dtype=np.cdouble)
+Hrot = np.zeros((STATE_COUNT, STATE_COUNT), dtype=np.cdouble)
+Hdc = np.zeros((STATE_COUNT, STATE_COUNT), dtype=np.cdouble)
+Hsplit = np.zeros((STATE_COUNT, STATE_COUNT), dtype=np.cdouble)
 
 # %% [markdown]
 """
@@ -82,9 +87,9 @@ their label |N,m> and also their position in the matrix. Let's define a new inte
 """
 
 # %%
-def state_iter(NMAX):
+def state_iter(to_N):
     s=0
-    for N in range(0, NMAX+1):
+    for N in range(0, to_N+1):
         for M in range(N, 0, -1):
             yield s, N, -M
             s += 1
@@ -94,8 +99,8 @@ def state_iter(NMAX):
         s += 1
 
 def state_to_pos(N, M):
-    for i, Ni, Mi in state_iter(NMAX):
-        if N==Ni and M==Mi:
+    for i, Ni, Mi in state_iter(N):
+        if N == Ni and M == Mi:
             return i
 
 # %% [markdown]
@@ -122,9 +127,8 @@ $$
 """
 
 # %%
-for i, N, M in state_iter(NMAX):
-    Erot = BROT * N * (N + 1)
-    Hrot[i, i] = Erot
+for i, N, M in state_iter(N_MAX):
+    Hrot[i, i] = B_0 * N * (N + 1)
 
 # %% [markdown]
 r"""
@@ -159,10 +163,10 @@ This has non-zero elements only for $\Delta l = \pm 1$ and $\Delta m = 0$
 """
 
 # %%
-for i, N1, M1 in state_iter(NMAX):
-    for j, N2, M2 in state_iter(NMAX):
+for i, N1, M1 in state_iter(N_MAX):
+    for j, N2, M2 in state_iter(N_MAX):
         Hdc[i, j] = (
-                -D_MOL
+                -D_0
                 * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
                 * (-1) ** M1
                 * wigner_3j(N1, 1, N2, -M1, 0, M2)
@@ -178,9 +182,11 @@ of $|N,M_N>\otimes|N,-M_N>$.
 """
 
 # %%
-for i, N, M in state_iter(NMAX):
+for i, N, M in state_iter(N_MAX):
     if M<0:
-        Hsplit[i, i] = -1e-34
+        Hsplit[i, i] = -1e-33
+    if M>0:
+        Hsplit[i, i] = 1e-33
 
 # %% [markdown]
 """
@@ -188,7 +194,7 @@ for i, N, M in state_iter(NMAX):
 """
 
 # %%
-E = np.linspace(EMIN, EMAX, ESTEPS) * 1e5  # V/m
+E = np.linspace(E_MIN, E_MAX, E_STEPS) * 1e5  # -> V/m
 Htot = Hrot[..., None] + Hdc[..., None] * E + Hsplit[..., None]
 Htot = Htot.transpose(2, 0, 1)
 
@@ -199,15 +205,6 @@ energies, states = eigh(Htot)
 # Sort states
 The `eigh` function sorts the states by increasing energy and so will rearange order of vectors
 """
-
-# %%
-M = np.matrix([[1,0,0],
-               [0,3,0],
-               [0,0,2]])
-
-eigval, eigvec = eigh(M)
-print("eigen values:\n", eigval)
-print("eigen vectors (in columns):\n", eigvec)
 
 
 # %%
@@ -260,13 +257,13 @@ fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
 state = state_to_pos(1,1)
 probs, reals = [], []
-for coefn in range(size):
+for coefn in range(STATE_COUNT):
     probs.append(np.abs(states[:,coefn,state])**2)
     reals.append(states[:,coefn,state].real)
 
 ax1.stackplot(E * 1e-5, probs)
 ax1.set_ylabel(r'$|c_n|^2$')
-ax1.set_ylim(0,1)
+ax1.set_ylim(0,1.3)
 
 ax2.plot(E * 1e-5, np.array(reals).transpose(1,0))
 ax2.set_xlabel("Electric Field (kV/cm)")
@@ -283,45 +280,61 @@ fig.show()
 # %%
 fig, ax = plt.subplots()
 
-colours = cm.rainbow(np.linspace(0, 1, NMAX+1))
-for i, N, M in state_iter(NMAX):
-    ax.plot(E * 1e-5, energies[:, i] * 1e-6 / scipy.constants.h)#,label=f'$|{N},{M}>$', color=colours[N])
+for i, N, M in state_iter(N_MAX):
+    ax.plot(E * 1e-5, energies[:, i] * 1e-6 / scipy.constants.h)#,label=f'$|{N},{M}>$', color=N_COLOURS[N])
     #ax.text(E[-1] * 1e-5, energies[-1, i] * 1e-6 / scipy.constants.h, f'$|{N},{M}>$')
 
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Energy/h (MHz)")
-#ax.set_xlim(0, 0.02)
-#ax.set_ylim(980.2,980.5)
+ax.set_xlim(0, E_MAX)
 #ax.legend()
 fig.show()
 
 # %% [markdown]
-"""
+r"""
 # Generalised Units
+We can generalise the above plot for any diatomic molecule with defining molecular parameters of $B_0$ and $d_0$.
+Each line has the form:
+$$E_{\tilde{N},M}(\epsilon) = E_{rot} + E_{DC} = B_0 \tilde{N} (\tilde{N}+1) + \epsilon d_0 f(\tilde{N},M_\tilde{N})$$
+$$\implies  \left(\frac{1}{B_0}\right) E_{\tilde{N},M}(\epsilon) = \tilde{N} (\tilde{N}+1) + \epsilon  \left(\frac{d_0}{B_0}\right) f(\tilde{N},M_\tilde{N})$$
+Therefore by plotting $E_{\tilde{N},M}$ in terms of $B_0$ and $\epsilon$ in terms of $B_0/d_0$ our graph will be independent of these molecular parameters
+$$E_{\tilde{N},M}(\epsilon) =  B_0 E'_{\tilde{N},M}(\epsilon),\quad \epsilon =  \left(\frac{B_0}{d_0}\right) \epsilon'$$
+$$\implies E'_{\tilde{N},M}(\epsilon) = \tilde{N} (\tilde{N}+1) + \epsilon' f(\tilde{N},M_\tilde{N})$$
 """
 
 # %%
 # Generalised Units code
+fig, ax = plt.subplots()
+
+for i, N, M in state_iter(N_MAX):
+    ax.plot(E * (D_0 / B_0), energies[:, i] / B_0) #,label=f'$|{N},{M}>$', color=N_COLOURS[N])
+    #ax.text(E[-1] * 1e-5, energies[-1, i] * 1e-6 / scipy.constants.h, f'$|{N},{M}>$')
+
+ax.set_xlabel("Electric Field $(B_0/d_0)$")
+ax.set_ylabel("Energy $(B_0)$")
+ax.set_xlim(0, 25)
+ax.set_ylim(-18, 25)
+#ax.legend()
+fig.show()
 
 # %% [markdown]
 r"""
 # Lab frame Dipole Moments
 We can get the lab frame expected dipole moments from the negative derivative of the energies.
 $$
-<\psi_i|d_z|\psi_i> = -\frac{d}{dE} <\psi_i|H|\psi_i> = -\frac{d\epsilon_i}{dE}
+<\psi_i|d_z|\psi_i> = -\frac{d}{d\epsilon} <\psi_i|H|\psi_i> = -\frac{dE_i}{d\epsilon}
 $$
 """
 
 # %%
 fig, ax = plt.subplots()
 
-colours = cm.rainbow(np.linspace(0, 1, NMAX+1))
-for i, N, M in state_iter(NMAX):
-    plt.plot(E * 1e-5, -np.gradient(energies[:, i], E)/D_MOL, color=colours[N])
+for i, N, M in state_iter(2):
+    plt.plot(E * 1e-5, -np.gradient(energies[:, i], E) / D_0, color=N_COLOURS[N])
 
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Dipole Moment ($d_0$)")
-ax.set_xlim(0, EMAX)
+ax.set_xlim(0, E_MAX)
 fig.show()
 
 # %% [markdown]
@@ -352,13 +365,13 @@ $$
 # %%
 fig, ax = plt.subplots()
 
-moments_to_show = [((0,0),0,(0,0)), ((1,0),0,(1,0)), ((0,0),0,(1,0)), ((1,1),0,(1,1)), ((0,0),-1,(1,1))]
+moments_to_show = [((0,0),0,(0,0)), ((1,0),0,(1,0)), ((0,0),0,(1,0)), ((1,1),0,(1,1)), ((1,1),1,(0,0))]
 
 # Get coefficients
 for state_1, state_2, P in [(state_to_pos(N1,M1), state_to_pos(N2,M2), P) for (N1,M1), P, (N2,M2) in moments_to_show]:
-    this_dipole_moment = np.zeros(ESTEPS, dtype=np.cdouble)
-    for i, N1, M1 in state_iter(NMAX):
-        for j, N2, M2 in state_iter(NMAX):
+    this_dipole_moment = np.zeros(E_STEPS, dtype=np.cdouble)
+    for i, N1, M1 in state_iter(N_MAX):
+        for j, N2, M2 in state_iter(N_MAX):
             amp = np.conj(states[:, i, state_1]) * states[:, j, state_2]
             pre = (-1) ** M1 * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
             wig = complex(wigner_3j(N1, 1, N2, -M1, P, M2) * wigner_3j(N1, 1, N2, 0, 0, 0))
@@ -367,8 +380,8 @@ for state_1, state_2, P in [(state_to_pos(N1,M1), state_to_pos(N2,M2), P) for (N
 
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Dipole Moment ($d_0$)")
-ax.set_xlim(0, EMAX)
-#ax.set_ylim(-1.0, 1.0)
+ax.set_xlim(0, E_MAX)
+ax.set_ylim(-1.0, 1.0)
 fig.show()
 
 # %% [markdown]
@@ -381,15 +394,15 @@ The addition of a E-field mixes higher rotational states into lower rotational s
 fig, ax = plt.subplots()
 
 converged_dipoles = []
-for N in range(1, NMAX+1):
+for N in range(1, N_MAX + 1):
     size = 1 + 2 * N + N**2
     convergence_Htot = Hrot[:size,:size, None] + Hdc[:size,:size, None] * E
     convergence_Htot = convergence_Htot.transpose(2, 0, 1)
     convergence_energies, convergence_states = eigh(convergence_Htot)
-    convergence_dipoles = -np.gradient(convergence_energies[:, 0], E)/D_MOL
+    convergence_dipoles = -np.gradient(convergence_energies[:, 0], E) / D_0
     converged_dipoles.append(convergence_dipoles[-2])
 
-ax.scatter(list(range(1,NMAX+1)), converged_dipoles)
+ax.scatter(list(range(1, N_MAX + 1)), converged_dipoles)
 ax.set_xlabel("Max N in Basis")
 ax.set_ylabel("Dipole Moment ($d_0$)")
 fig.show()
@@ -401,7 +414,6 @@ fig.show()
 
 
 # %%
-POLAR_PLOT_RES = 50
 # Polar and Azimuthal angles to Sample
 theta = np.linspace(0, np.pi, POLAR_PLOT_RES)
 phi = np.linspace(0, 2*np.pi, POLAR_PLOT_RES)
@@ -453,14 +465,14 @@ fig.show()
 # %%
 def surface_plot_stark(e_number, state, ax):
     f_grid = np.zeros((POLAR_PLOT_RES, POLAR_PLOT_RES), dtype=np.cdouble)
-    for i, N, M in state_iter(NMAX):
+    for i, N, M in state_iter(N_MAX):
         f_grid += states[e_number, i, state] * sph_harm(M, N, phi_grid, theta_grid)
     Yx, Yy, Yz = np.abs(f_grid) * xyz # get final output cartesian coords
     surface_plot(Yx, Yy, Yz, ax)
 
 # %%
 fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-surface_plot_stark(ESTEPS-1, 3, ax)
+surface_plot_stark(E_STEPS - 1, 3, ax)
 fig.show()
 
 # %% [markdown]
@@ -474,7 +486,7 @@ SHOW_NMAX = 3 # Change me
 fig = plt.figure()
 spec = gridspec.GridSpec(ncols=2 * SHOW_NMAX + 1, nrows=SHOW_NMAX + 1, figure=fig, wspace=-0.32, hspace=-0.32)
 
-for e_number in range(0,ESTEPS,ESTEPS-2):
+for e_number in range(0, E_STEPS, E_STEPS - 2):
     fig.clf()
 
     for showi, showN, showM in state_iter(SHOW_NMAX):
