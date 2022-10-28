@@ -34,6 +34,9 @@ from matplotlib.pyplot import cm
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 plt.rcParams["text.usetex"] = True
+plt.rcParams["figure.autolayout"] = True
+plt.rcParams['figure.figsize'] = (4, 3.5)
+plt.rcParams['figure.dpi'] = 200
 
 # %matplotlib notebook
 # %config InlineBackend.figure_format = 'retina'
