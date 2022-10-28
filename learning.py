@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
-plt.rcParams['text.usetex'] = True
+plt.rcParams["text.usetex"] = True
 
 # %matplotlib notebook
 # %config InlineBackend.figure_format = 'retina'
@@ -54,14 +54,14 @@ B_0 = 490.173994326310e6 * scipy.constants.h  # B_0 := H_BAR^2/2I
 # Global Computational Constants
 N_MAX = 7  #  No. of Rotational base states 0 <= N <= N_MAX
 
-E_MIN = 1e-2 # Min E Field in kV/cm, non-zero to stop 3-fold degeneracy at 0 field.
+E_MIN = 1e-2  # Min E Field in kV/cm, non-zero to stop 3-fold degeneracy at 0 field.
 E_MAX = 20  # Max E Field in kV/cm
-E_STEPS = 200 # Resolution of E Field range
+E_STEPS = 200  # Resolution of E Field range
 
 POLAR_PLOT_RES = 50
 
 # Derived Constants
-STATE_COUNT = 1 + 2 * N_MAX + N_MAX ** 2
+STATE_COUNT = 1 + 2 * N_MAX + N_MAX**2
 N_COLOURS = cm.rainbow(np.linspace(0, 1, N_MAX + 1))
 
 # %% [markdown]
@@ -88,8 +88,8 @@ their label |N,m> and also their position in the matrix. Let's define a new inte
 
 # %%
 def state_iter(to_N):
-    s=0
-    for N in range(0, to_N+1):
+    s = 0
+    for N in range(0, to_N + 1):
         for M in range(N, 0, -1):
             yield s, N, -M
             s += 1
@@ -98,10 +98,12 @@ def state_iter(to_N):
         yield s, N, 0
         s += 1
 
+
 def state_to_pos(N, M):
     for i, Ni, Mi in state_iter(N):
         if N == Ni and M == Mi:
             return i
+
 
 # %% [markdown]
 r"""
@@ -166,11 +168,11 @@ This has non-zero elements only for $\Delta l = \pm 1$ and $\Delta m = 0$
 for i, N1, M1 in state_iter(N_MAX):
     for j, N2, M2 in state_iter(N_MAX):
         Hdc[i, j] = (
-                -D_0
-                * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
-                * (-1) ** M1
-                * wigner_3j(N1, 1, N2, -M1, 0, M2)
-                * wigner_3j(N1, 1, N2, 0, 0, 0)
+            -D_0
+            * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
+            * (-1) ** M1
+            * wigner_3j(N1, 1, N2, -M1, 0, M2)
+            * wigner_3j(N1, 1, N2, 0, 0, 0)
         )
 
 # %% [markdown]
@@ -183,9 +185,9 @@ of $|N,M_N>\otimes|N,-M_N>$.
 
 # %%
 for i, N, M in state_iter(N_MAX):
-    if M<0:
+    if M < 0:
         Hsplit[i, i] = -1e-33
-    if M>0:
+    if M > 0:
         Hsplit[i, i] = 1e-33
 
 # %% [markdown]
@@ -209,7 +211,7 @@ The `eigh` function sorts the states by increasing energy and so will rearange o
 
 # %%
 def sort_smooth(in_energies, in_states):
-    ''' Sort states to remove false avoided crossings.
+    """Sort states to remove false avoided crossings.
 
     This is a function to ensure that all eigenstates plotted change
     adiabatically, it does this by assuming that step to step the eigenstates
@@ -222,28 +224,30 @@ def sort_smooth(in_energies, in_states):
     Returns:
         Energy (numpy.ndarray) : numpy.ndarray containing the eigenergies, as from numpy.linalg.eig
         States (numpy.ndarray): numpy.ndarray containing the states, in the same order as Energy E[x,i] -> States[x,:,i]
-    '''
-    ls = np.arange(in_states.shape[2],dtype="int")
-    number_iterations = len(in_energies[:,0])
-    for i in range(1,number_iterations):
-        '''
+    """
+    ls = np.arange(in_states.shape[2], dtype="int")
+    number_iterations = len(in_energies[:, 0])
+    for i in range(1, number_iterations):
+        """
         This loop sorts the eigenstates such that they maintain some
         continuity. Each eigenstate should be chosen to maximise the overlap
         with the previous.
-        '''
-        #calculate the overlap of the ith and jth eigenstates
-        overlaps = np.einsum('ij,ik->jk',
-                                np.conjugate(in_states[i-1,:,:]),in_states[i,:,:])
-        orig2 = in_states[i,:,:].copy()
-        orig1 = in_energies[i,:].copy()
-        #insert location of maximums into array ls
-        np.argmax(np.abs(overlaps),axis=1,out=ls)
+        """
+        # calculate the overlap of the ith and jth eigenstates
+        overlaps = np.einsum(
+            "ij,ik->jk", np.conjugate(in_states[i - 1, :, :]), in_states[i, :, :]
+        )
+        orig2 = in_states[i, :, :].copy()
+        orig1 = in_energies[i, :].copy()
+        # insert location of maximums into array ls
+        np.argmax(np.abs(overlaps), axis=1, out=ls)
         for k in range(in_states.shape[2]):
             l = ls[k]
-            if l!=k:
-                in_energies[i,k] = orig1[l].copy()
-                in_states[i,:,k] = orig2[:,l].copy()
+            if l != k:
+                in_energies[i, k] = orig1[l].copy()
+                in_states[i, :, k] = orig2[:, l].copy()
     return in_energies, in_states
+
 
 energies, states = sort_smooth(energies, states)
 
@@ -255,20 +259,20 @@ energies, states = sort_smooth(energies, states)
 # %%
 fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-state = state_to_pos(1,1)
+state = state_to_pos(1, 1)
 probs, reals = [], []
 for coefn in range(STATE_COUNT):
-    probs.append(np.abs(states[:,coefn,state])**2)
-    reals.append(states[:,coefn,state].real)
+    probs.append(np.abs(states[:, coefn, state]) ** 2)
+    reals.append(states[:, coefn, state].real)
 
 ax1.stackplot(E * 1e-5, probs)
-ax1.set_ylabel(r'$|c_n|^2$')
-ax1.set_ylim(0,1.3)
+ax1.set_ylabel(r"$|c_n|^2$")
+ax1.set_ylim(0, 1.2)
 
-ax2.plot(E * 1e-5, np.array(reals).transpose(1,0))
+ax2.plot(E * 1e-5, np.array(reals).transpose(1, 0))
 ax2.set_xlabel("Electric Field (kV/cm)")
-ax2.set_ylabel(r'$Re(c_n)$')
-ax2.set_ylim(-1,1)
+ax2.set_ylabel(r"$Re(c_n)$")
+ax2.set_ylim(-1, 1)
 
 fig.show()
 
@@ -281,13 +285,11 @@ fig.show()
 fig, ax = plt.subplots()
 
 for i, N, M in state_iter(N_MAX):
-    ax.plot(E * 1e-5, energies[:, i] * 1e-6 / scipy.constants.h)#,label=f'$|{N},{M}>$', color=N_COLOURS[N])
-    #ax.text(E[-1] * 1e-5, energies[-1, i] * 1e-6 / scipy.constants.h, f'$|{N},{M}>$')
+    ax.plot(E * 1e-5, energies[:, i] * 1e-6 / scipy.constants.h)
 
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Energy/h (MHz)")
 ax.set_xlim(0, E_MAX)
-#ax.legend()
 fig.show()
 
 # %% [markdown]
@@ -307,14 +309,12 @@ $$\implies E'_{\tilde{N},M}(\epsilon) = \tilde{N} (\tilde{N}+1) + \epsilon' f(\t
 fig, ax = plt.subplots()
 
 for i, N, M in state_iter(N_MAX):
-    ax.plot(E * (D_0 / B_0), energies[:, i] / B_0) #,label=f'$|{N},{M}>$', color=N_COLOURS[N])
-    #ax.text(E[-1] * 1e-5, energies[-1, i] * 1e-6 / scipy.constants.h, f'$|{N},{M}>$')
+    ax.plot(E * (D_0 / B_0), energies[:, i] / B_0)
 
 ax.set_xlabel("Electric Field $(B_0/d_0)$")
 ax.set_ylabel("Energy $(B_0)$")
 ax.set_xlim(0, 25)
 ax.set_ylim(-18, 25)
-#ax.legend()
 fig.show()
 
 # %% [markdown]
@@ -365,10 +365,21 @@ $$
 # %%
 fig, ax = plt.subplots()
 
-moments_to_show = [((0,0),0,(0,0)), ((1,0),0,(1,0)), ((0,0),0,(1,0)), ((1,1),0,(1,1)), ((1,1),1,(0,0))]
+moments_to_show = [
+    ((0, 0), 0, (0, 0)),
+    ((1, 0), 0, (1, 0)),
+    ((0, 0), 0, (1, 0)),
+    ((1, 1), 0, (1, 1)),
+    ((1, 1), 1, (0, 0)),
+]
+
+moments_state_number = [
+    (state_to_pos(N1, M1), state_to_pos(N2, M2), P)
+    for (N1, M1), P, (N2, M2) in moments_to_show
+]
 
 # Get coefficients
-for state_1, state_2, P in [(state_to_pos(N1,M1), state_to_pos(N2,M2), P) for (N1,M1), P, (N2,M2) in moments_to_show]:
+for state_1, state_2, P in moments_state_number:
     this_dipole_moment = np.zeros(E_STEPS, dtype=np.cdouble)
     for i, N1, M1 in state_iter(N_MAX):
         for j, N2, M2 in state_iter(N_MAX):
@@ -396,7 +407,7 @@ fig, ax = plt.subplots()
 converged_dipoles = []
 for N in range(1, N_MAX + 1):
     size = 1 + 2 * N + N**2
-    convergence_Htot = Hrot[:size,:size, None] + Hdc[:size,:size, None] * E
+    convergence_Htot = Hrot[:size, :size, None] + Hdc[:size, :size, None] * E
     convergence_Htot = convergence_Htot.transpose(2, 0, 1)
     convergence_energies, convergence_states = eigh(convergence_Htot)
     convergence_dipoles = -np.gradient(convergence_energies[:, 0], E) / D_0
@@ -416,38 +427,54 @@ fig.show()
 # %%
 # Polar and Azimuthal angles to Sample
 theta = np.linspace(0, np.pi, POLAR_PLOT_RES)
-phi = np.linspace(0, 2*np.pi, POLAR_PLOT_RES)
+phi = np.linspace(0, 2 * np.pi, POLAR_PLOT_RES)
 # Create a 2-D meshgrid of (theta, phi) angles.
 theta_grid, phi_grid = np.meshgrid(theta, phi)
 # Calculate the unit sphere Cartesian coordinates of each (theta, phi).
-xyz = np.array([np.sin(theta_grid) * np.sin(phi_grid), np.sin(theta_grid) * np.cos(phi_grid), np.cos(theta_grid)])
+xyz = np.array(
+    [
+        np.sin(theta_grid) * np.sin(phi_grid),
+        np.sin(theta_grid) * np.cos(phi_grid),
+        np.cos(theta_grid),
+    ]
+)
+
 
 def f_sph_polar_to_cart_surf(f):
-    f_grid = f(theta_grid, phi_grid) # Evaluate function over grid
-    fxs, fys, fzs = np.abs(f_grid) * xyz # get final output cartesian coords
+    f_grid = f(theta_grid, phi_grid)  # Evaluate function over grid
+    fxs, fys, fzs = np.abs(f_grid) * xyz  # get final output cartesian coords
     return fxs, fys, fzs
+
 
 def surface_plot(fxs, fys, fzs, ax):
     # Add axis lines
     ax_len = 0.5
-    ax.plot([-ax_len, ax_len], [0,0], [0,0], c='0.5', lw=1, alpha=0.3)
-    ax.plot([0,0], [-ax_len, ax_len], [0,0], c='0.5', lw=1, alpha=0.3)
-    ax.plot([0,0], [0,0], [-ax_len, ax_len], c='0.5', lw=1, alpha=0.3)
+    ax.plot([-ax_len, ax_len], [0, 0], [0, 0], c="0.5", lw=1, alpha=0.3)
+    ax.plot([0, 0], [-ax_len, ax_len], [0, 0], c="0.5", lw=1, alpha=0.3)
+    ax.plot([0, 0], [0, 0], [-ax_len, ax_len], c="0.5", lw=1, alpha=0.3)
     # Set axes limits
     ax_lim = 0.5
     ax.set_xlim(-ax_lim, ax_lim)
     ax.set_ylim(-ax_lim, ax_lim)
     ax.set_zlim(-ax_lim, ax_lim)
     # Set camera position
-    ax.view_init(elev=15, azim=45) #Reproduce view
-    ax.set_xlim3d(-.45,.45)     #Reproduce magnification
-    ax.set_ylim3d(-.45,.45)     #...
-    ax.set_zlim3d(-.45,.45)     #...
+    ax.view_init(elev=15, azim=45)  # Reproduce view
+    ax.set_xlim3d(-0.45, 0.45)  # Reproduce magnification
+    ax.set_ylim3d(-0.45, 0.45)  # ...
+    ax.set_zlim3d(-0.45, 0.45)  # ...
     # Turn off Axes
-    ax.axis('off')
+    ax.axis("off")
     # Draw
     ax.patch.set_alpha(0.0)
-    ax.plot_surface(fxs, fys, fzs, rstride=1, cstride=1, cmap=plt.get_cmap('viridis'), linewidth=0, antialiased=False, alpha=0.3, shade=False)
+    ax.plot_surface(
+        fxs, fys, fzs,
+        rstride=1, cstride=1,
+        cmap=plt.get_cmap("viridis"),
+        linewidth=0,
+        antialiased=False,
+        alpha=0.3,
+        shade=False,
+    )
 
 
 # %%
@@ -467,8 +494,9 @@ def surface_plot_stark(e_number, state, ax):
     f_grid = np.zeros((POLAR_PLOT_RES, POLAR_PLOT_RES), dtype=np.cdouble)
     for i, N, M in state_iter(N_MAX):
         f_grid += states[e_number, i, state] * sph_harm(M, N, phi_grid, theta_grid)
-    Yx, Yy, Yz = np.abs(f_grid) * xyz # get final output cartesian coords
+    Yx, Yy, Yz = np.abs(f_grid) * xyz  # get final output cartesian coords
     surface_plot(Yx, Yy, Yz, ax)
+
 
 # %%
 fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
@@ -481,7 +509,7 @@ fig.show()
 """
 
 # %%
-SHOW_NMAX = 3 # Change me
+SHOW_NMAX = 3  # Change me
 
 fig = plt.figure()
 spec = gridspec.GridSpec(ncols=2 * SHOW_NMAX + 1, nrows=SHOW_NMAX + 1, figure=fig, wspace=-0.32, hspace=-0.32)
@@ -490,11 +518,10 @@ for e_number in range(0, E_STEPS, E_STEPS - 2):
     fig.clf()
 
     for showi, showN, showM in state_iter(SHOW_NMAX):
-        ax = fig.add_subplot(spec[showN, showM + SHOW_NMAX], projection='3d')
+        ax = fig.add_subplot(spec[showN, showM + SHOW_NMAX], projection="3d")
         surface_plot_stark(e_number, showi, ax)
 
-    fig.suptitle(f'E = {E[e_number]*1e-5:.2f} kV/cm', fontsize=16)
-    filename=f'animation/image{e_number:03}.png'
+    fig.suptitle(f"E = {E[e_number]*1e-5:.2f} kV/cm", fontsize=16)
+    filename = f"animation/image{e_number:03}.png"
     fig.savefig(filename, dpi=400)
     fig.show()
-
