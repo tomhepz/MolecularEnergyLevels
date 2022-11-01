@@ -368,13 +368,18 @@ $$
 # %%
 fig, ax = plt.subplots()
 
-moments_to_show = [
-    ((0, 0), 0, (0, 0)),
-    ((1, 0), 0, (1, 0)),
-    ((0, 0), 0, (1, 0)),
-    ((1, 1), 0, (1, 1)),
-    ((1, 1), 1, (0, 0)),
-]
+moments_to_show=[]
+for i, N1, M1 in state_iter(2):
+    for j, N2, M2 in state_iter(2):
+        dN = N1-N2
+        dM = M1-M2
+        if dN == 0 and dM == 0:
+            moments_to_show.append(((N1, M1), 0, (N2, M2)))
+        elif abs(dN) == 1 and abs(dM) <= 1:
+            moments_to_show.append(((N1, M1), 0, (N2, M2)))
+            moments_to_show.append(((N1, M1), 1, (N2, M2)))
+            moments_to_show.append(((N1, M1), -1, (N2, M2)))
+print(moments_to_show)
 
 moments_state_number = [
     (state_to_pos(N1, M1), state_to_pos(N2, M2), P)
@@ -390,8 +395,9 @@ for state_1, state_2, P in moments_state_number:
             pre = (-1) ** M1 * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
             wig = complex(wigner_3j(N1, 1, N2, -M1, P, M2) * wigner_3j(N1, 1, N2, 0, 0, 0))
             this_dipole_moment += amp * pre * wig
+    if state_1 != state_2:
+        this_dipole_moment = np.abs(this_dipole_moment)
     ax.plot(E * 1e-5, this_dipole_moment)
-
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Dipole Moment ($d_0$)")
 ax.set_xlim(0, E_MAX)
