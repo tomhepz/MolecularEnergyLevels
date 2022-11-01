@@ -149,7 +149,7 @@ H_BAR = scipy.constants.hbar
 
 # %% [markdown]
 """
-# Simple 2-level Hamiltonian
+# 2-level state variation
 """
 
 # %%
@@ -163,8 +163,8 @@ T_STEPS = 100
 times = np.linspace(T_MIN,T_MAX,T_STEPS)
 
 for detuning_ratio in [0,1,2]: # \Delta = w-w_0
-
     detuning = detuning_ratio * omega
+    
     ham = H_BAR/2 * np.array([[0, omega],[omega, -2*detuning]])
 
     initial = np.array([1,0])
@@ -183,3 +183,36 @@ ax.xaxis.set_major_locator(MultipleLocator(base=np.pi))
 ax.legend()
 fig.show()
 
+
+# %% [markdown]
+"""
+# 2-level detuning dependence
+"""
+
+# %%
+fig,ax = plt.subplots()
+
+omega = 6 # Rabi Frequency = E_0/hbar <e|d.e|g>
+
+D_MIN = -6
+D_MAX = +6
+D_STEPS = 100
+detunings = np.linspace(D_MIN*omega,D_MAX*omega,D_STEPS)
+
+transferred = []
+for detuning in detunings: # \Delta = w-w_0
+    
+    ham = H_BAR/2 * np.array([[0, omega],[omega, -2*detuning]])
+    initial = np.array([1,0])
+    t=np.pi/omega
+    unitary = scipy.linalg.expm(-(1j)*t*ham/H_BAR)
+    final = np.matmul(unitary,initial)
+    transferred.append(np.abs(final[1])**2)
+
+ax.plot(detunings/omega, transferred)
+
+ax.set_xlim(D_MIN,D_MAX)
+ax.set_ylim(0,1)
+ax.set_xlabel("$\Delta (\Omega)$")
+ax.set_ylabel("$|c_e|^2$")
+fig.show()
