@@ -216,3 +216,154 @@ ax.set_ylim(0,1)
 ax.set_xlabel("$\Delta (\Omega)$")
 ax.set_ylabel("$|c_e|^2$")
 fig.show()
+
+# %% [markdown]
+r"""
+# Exact time evolution of two-level
+
+Taking the general exact matrix equation
+$$
+i\hbar \frac{\partial}{\partial t} 
+\begin{pmatrix}
+c_0(t)\\
+\vdots\\
+c_m(t)
+\end{pmatrix}
+= 
+\begin{pmatrix}
+\bra{0}H'(t)\ket{0}e^{iw_{00}t} & \dots & \bra{0}H'(t)\ket{n}e^{iw_{0n}t} \\
+\vdots                          & \ddots & \vdots                          \\
+\bra{n}H'(t)\ket{0}e^{iw_{n0}t} & \dots & \bra{n}H'(t)\ket{n}e^{iw_{nn}t} \\
+\end{pmatrix}
+\begin{pmatrix}
+c_0(t)\\
+\vdots\\
+c_m(t)
+\end{pmatrix}
+$$
+
+And substituting in for $\hat{H}'(t) = \bf{\hat{d}} \cdot \bf{\hat{E}}$ Where $\bf{\hat{d}}$ is the electric dipole operator, and $E = \hat{\epsilon} E_0  cos (- \omega t)$ is a plane wave.
+
+Each matrix element becomes
+$$
+H_{ij} = \frac{E_0}{2} \bra{i} \mathbf{\hat{d}} \cdot \mathbf{\hat{\epsilon}} \ket{j} (e^{i(w_{ij}-w)t} + e^{i(w_{ij}+w)t})
+$$
+Breaking this up into a Hadamard product (pairwise multiplication) of a time-independent and a time-dependent part
+$$
+H_{ij} = \frac{\hbar}{2} \Omega_{ij} \odot T_{ij}
+$$
+Where 
+$$
+\Omega_{ij} = \frac{E_0}{\hbar} \bra{i} \mathbf{\hat{d}} \cdot \mathbf{\hat{\epsilon}} \ket{j}
+$$
+and
+$$
+T_{ij} = e^{i(w_{ij}-w)t} + e^{i(w_{ij}+w)t}
+$$
+"""
+
+# %%
+fig, ax = plt.subplots()
+
+
+driving = 999
+angular = [0, 1000]
+
+# Construct coupling matrix
+coupling = np.matrix([[0, 1],
+                      [1, 0]], dtype=np.cdouble)
+
+# Construct
+T_MAX = 40
+T_STEPS = 1000
+times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
+
+Ts = []
+for t in times:
+    T  = np.zeros((2,2), dtype=np.cdouble)
+    for i in range(2):
+        for j in range(2):
+            T[i,j] = np.exp((1j)*(angular[i]-angular[j]-driving)*t) + np.exp((1j)*(angular[i]-angular[j]+driving)*t)
+    Ts.append(T)
+Ts = np.array(Ts)
+
+# Construct Hamiltonians
+H = np.array([H_BAR/2 * np.multiply(coupling, T) for T in Ts])
+
+
+# Move State
+
+finals = []
+state = np.array([0,1]) # initial state
+
+for i in range(T_STEPS):
+    unitary = scipy.linalg.expm(-(1j)*(DT/H_BAR)*H[i])
+    state = np.matmul(unitary,state)
+    finals.append(np.abs(state[0])**2)
+
+    
+ax.set_xlim(0,T_MAX)
+ax.set_ylim(0,1)
+ax.set_xlabel("t (s)")
+ax.set_ylabel("$|c_e|^2$")
+
+ax.plot(times, finals)
+
+# %% [markdown]
+"""
+# A real system
+
+Take a 5 Level system with 
+"""
+
+# %%
+fig, ax = plt.subplots()
+
+INITIAL_STATE = 0
+angular = [0, 1e13, 1e13+1e7, 1e13+1e9, 1e13+1e9+1e7]
+N_STATES = len(angular)
+
+# Construct coupling matrix
+global_coupling = 5e6
+coupling = global_coupling*(np.ones(N_STATES)-np.eye(N_STATES))
+
+driving = 1e13
+
+# Construct
+T_MAX = 6*np.pi / global_coupling
+T_STEPS = 4000
+times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
+
+Ts = []
+for t in times:
+    T  = np.zeros((N_STATES,N_STATES), dtype=np.cdouble)
+    for i in range(N_STATES):
+        for j in range(N_STATES):
+            T[i,j] = np.exp((1j)*(angular[i]-angular[j]-driving)*t) + np.exp((1j)*(angular[i]-angular[j]+driving)*t)
+    Ts.append(T)
+Ts = np.array(Ts)
+
+# Construct Hamiltonians
+H = np.array([H_BAR/2 * np.multiply(coupling, T) for T in Ts])
+
+
+# Move State
+
+finals = []
+
+state = np.zeros(N_STATES) # initial state
+state[INITIAL_STATE] = 1
+
+
+for i in range(T_STEPS):
+    unitary = scipy.linalg.expm(-(1j)*(DT/H_BAR)*H[i])
+    state = np.matmul(unitary,state)
+    finals.append(np.abs(state)**2)
+
+    
+ax.set_xlim(0,T_MAX)
+ax.set_ylim(0,1.1)
+ax.set_xlabel("t (s)")
+ax.set_ylabel("$|c_e|^2$")
+
+ax.plot(times, finals)
