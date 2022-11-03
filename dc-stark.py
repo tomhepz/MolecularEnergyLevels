@@ -262,7 +262,7 @@ energies, states = sort_smooth(energies, states)
 # %%
 fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-state = state_to_pos(1, 1)
+state = state_to_pos(3, 1)
 probs, reals = [], []
 for coefn in range(STATE_COUNT):
     probs.append(np.abs(states[:, coefn, state]) ** 2)
@@ -368,36 +368,33 @@ $$
 # %%
 fig, ax = plt.subplots()
 
-moments_to_show=[]
-for i, N1, M1 in state_iter(2):
-    for j, N2, M2 in state_iter(2):
-        dN = N1-N2
-        dM = M1-M2
-        if dN == 0 and dM == 0:
-            moments_to_show.append(((N1, M1), 0, (N2, M2)))
-        elif abs(dN) == 1 and abs(dM) <= 1:
-            moments_to_show.append(((N1, M1), 0, (N2, M2)))
-            moments_to_show.append(((N1, M1), 1, (N2, M2)))
-            moments_to_show.append(((N1, M1), -1, (N2, M2)))
-print(moments_to_show)
+# Form dipole operator matrix
+"""
+for P=0, dL = +-1, dM=0
+for P=1, dL = +-1, dM=-1
+for P=-1, dL = +-1, dM=1
+"""
+dipole_operator = np.zeros((STATE_COUNT,STATE_COUNT))
 
-moments_state_number = [
-    (state_to_pos(N1, M1), state_to_pos(N2, M2), P)
-    for (N1, M1), P, (N2, M2) in moments_to_show
-]
+def dipole_coef(N1,M1,N2,M2,P):
+    pre = (-1) ** M1 * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
+    wig = wigner_3j(N1, 1, N2, -M1, P, M2) * wigner_3j(N1, 1, N2, 0, 0, 0)
+    return pre * wig
 
-# Get coefficients
-for state_1, state_2, P in moments_state_number:
-    this_dipole_moment = np.zeros(E_STEPS, dtype=np.cdouble)
-    for i, N1, M1 in state_iter(N_MAX):
-        for j, N2, M2 in state_iter(N_MAX):
-            amp = np.conj(states[:, i, state_1]) * states[:, j, state_2]
-            pre = (-1) ** M1 * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
-            wig = complex(wigner_3j(N1, 1, N2, -M1, P, M2) * wigner_3j(N1, 1, N2, 0, 0, 0))
-            this_dipole_moment += amp * pre * wig
-    if state_1 != state_2:
-        this_dipole_moment = np.abs(this_dipole_moment)
-    ax.plot(E * 1e-5, this_dipole_moment)
+for i, N1, M1 in state_iter(N_MAX):
+    for j, N2, M2 in state_iter(N_MAX):
+        for P in [-1,0,1]:
+            dipole_operator[i,j] += dipole_coef(N1,M1,N2,M2,P)
+
+dipole_moments = np.array([e_states.conj().T @ dipole_operator @ e_states for e_states in states])
+
+# Hack to fix +-1 oscillation
+mask = np.ones(STATE_COUNT,dtype=np.bool_)^np.eye(STATE_COUNT,dtype=np.bool_)
+[np.absolute(dipole_moment, where=mask, out=dipole_moments[e]) for e, dipole_moment in enumerate(dipole_moments)]
+
+moments_to_show = [(0,0,1,0),(0,0,1,1),(0,0,0,0),(1,1,1,1),(1,0,1,0),(0,0,2,0)]
+for N1,M1,N2,M2 in moments_to_show:
+    ax.plot(E * 1e-5, dipole_moments[:,state_to_pos(N1,M1),state_to_pos(N2,M2)])
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Dipole Moment ($d_0$)")
 ax.set_xlim(0, E_MAX)
@@ -534,3 +531,42 @@ for e_number in range(0, E_STEPS, E_STEPS - 2):
     filename = f"animation/image{e_number:03}.png"
     fig.savefig(filename, dpi=400)
     fig.show()
+
+# %% [markdown]
+"""
+# Driving Rabi Oscillations
+"""
+
+# %%
+omega = 1 # Rabi Frequency = E_0/hbar <e|d.e|g>
+
+T_MIN = 0
+T_MAX = np.pi*4
+T_STEPS = 100
+times = np.linspace(T_MIN,T_MAX,T_STEPS)
+
+
+detuning = 0 * omega
+ham = H_BAR/2 * np.array([[0, omega],[omega, -2*detuning]])
+initial = np.array([1,0])
+unitaries = np.array([scipy.linalg.expm(-(1j)*t*ham/H_BAR) for t in times])
+finals = np.matmul(unitaries,initial)
+
+
+fig = plt.figure()
+for t_number in range(0, T_STEPS, 1):
+    fig.clf()
+    
+    ax = fig.add_subplot(projection="3d")
+
+    f = lambda theta_grid, phi_grid : np.abs(finals[t_number,0]*sph_harm(1, 1, phi_grid, theta_grid)+finals[t_number,1]*sph_harm(0, 0, phi_grid, theta_grid))**2
+    fxs, fys, fzs = f_sph_polar_to_cart_surf(f)
+    surface_plot(fxs, fys, fzs, ax)
+    ax.view_init(elev=60, azim=45)  # Reproduce view
+    
+    filename = f"animation/rabi-image{t_number:03}.png"
+    fig.savefig(filename, dpi=200)
+#    fig.show()
+
+
+# %%

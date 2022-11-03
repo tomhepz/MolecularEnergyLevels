@@ -22,7 +22,7 @@ pip-compile dev-requirements.in
 pip-sync dev-requirements.txt
 
 # Run as script
-python ./learning.py
+python ./dc-stark.py
 
 # ... OR open in jupyter
 jupyter lab

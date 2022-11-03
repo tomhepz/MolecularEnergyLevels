@@ -311,9 +311,21 @@ ax.plot(times, finals)
 
 # %% [markdown]
 """
-# A real system
+# 5-level system
 
-Take a 5 Level system with 
+```
+---- 1e13 + 1e9 + 1e7
+---- 1e13 + 1e9
+
+
+---- 1e13 + 1e7
+---- 1e13
+ ^
+ |
+ |
+ |
+---- 0
+```
 """
 
 # %%
@@ -324,14 +336,14 @@ angular = [0, 1e13, 1e13+1e7, 1e13+1e9, 1e13+1e9+1e7]
 N_STATES = len(angular)
 
 # Construct coupling matrix
-global_coupling = 5e6
+global_coupling = 4e8
 coupling = global_coupling*(np.ones(N_STATES)-np.eye(N_STATES))
 
 driving = 1e13
 
 # Construct
-T_MAX = 6*np.pi / global_coupling
-T_STEPS = 4000
+T_MAX = 15*np.pi / global_coupling
+T_STEPS = 13421
 times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
 
 Ts = []
@@ -367,3 +379,6 @@ ax.set_xlabel("t (s)")
 ax.set_ylabel("$|c_e|^2$")
 
 ax.plot(times, finals)
+fig.show()
+
+# %%

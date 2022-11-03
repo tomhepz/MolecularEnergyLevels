@@ -2,3 +2,4 @@ numpy
 scipy
 sympy
 matplotlib
+git+https://github.com/PhilipDGregory/Diatomic-Py.git#egg=diatom
