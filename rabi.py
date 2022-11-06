@@ -2,7 +2,7 @@
 # jupyter:
 #   jupytext:
 #     cell_markers: '"""'
-#     formats: ipynb,py:percent
+#     formats: notebooks//ipynb,py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -266,12 +266,12 @@ $$
 fig, ax = plt.subplots()
 
 
-driving = 999
-angular = [0, 1000]
+driving = 1
+angular = [0, 1]
 
 # Construct coupling matrix
-coupling = np.matrix([[0, 1],
-                      [1, 0]], dtype=np.cdouble)
+coupling = np.matrix([[0, 0.3],
+                      [0.3, 0]], dtype=np.cdouble)
 
 # Construct
 T_MAX = 40
@@ -332,11 +332,11 @@ ax.plot(times, finals)
 fig, ax = plt.subplots()
 
 INITIAL_STATE = 0
-angular = [0, 1e13, 1e13+1e7, 1e13+1e9, 1e13+1e9+1e7]
+angular = [0, 1e13, 1e13+1e6]#, 1e13+1e9, 1e13+1e9+1e7]
 N_STATES = len(angular)
 
 # Construct coupling matrix
-global_coupling = 4e8
+global_coupling = 4e5
 coupling = global_coupling*(np.ones(N_STATES)-np.eye(N_STATES))
 
 driving = 1e13
