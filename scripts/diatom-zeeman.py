@@ -2,7 +2,7 @@
 # jupyter:
 #   jupytext:
 #     cell_markers: '"""'
-#     formats: notebooks//ipynb,py:percent
+#     formats: notebooks//ipynb,scripts//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent

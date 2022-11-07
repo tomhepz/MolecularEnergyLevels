@@ -2,7 +2,7 @@
 # jupyter:
 #   jupytext:
 #     cell_markers: '"""'
-#     formats: notebooks//ipynb,py:percent
+#     formats: notebooks//ipynb,scripts//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -586,7 +586,7 @@ fig.show()
 
 
 fig = plt.figure()
-for t_number in range(0, T_STEPS, 2):
+for t_number in range(0, T_STEPS, T_STEPS - 2):
     fig.clf()
     
     ax = fig.add_subplot(projection="3d")
