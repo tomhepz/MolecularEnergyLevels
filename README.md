@@ -22,11 +22,12 @@ pip-compile dev-requirements.in
 pip-sync dev-requirements.txt
 
 # Run as script
-python ./dc-stark.py
+python ./scripts/raw-dc-stark.py
 
 # ... OR open in jupyter
-jupyter lab
-# because of jupytext plugin, can open learning.py as notebook
+jupyter notebook
+# because of jupytext plugin, can open scripts as notebook
+# or % formatted python script
 
 # To leave python venv environment
 deactivate
