@@ -332,17 +332,18 @@ ax.plot(times, finals)
 fig, ax = plt.subplots()
 
 INITIAL_STATE = 0
-angular = [0, 1e13, 1e13+1e6]#, 1e13+1e9, 1e13+1e9+1e7]
+#angular = [0, 1e13, 1e13+1e6]#, 1e13+1e9, 1e13+1e9+1e7]
+angular = [0., 6.15845642e9, 6.15794005e9, 6.15845683e9, 6.15994033e9, 6.15963301e9, 6.15925873e9, 6.15994076e9, 6.15963347e9, 6.15994118e9, 6.16073900e9]
 N_STATES = len(angular)
 
 # Construct coupling matrix
-global_coupling = 4e5
+global_coupling = 4e4
 coupling = global_coupling*(np.ones(N_STATES)-np.eye(N_STATES))
 
-driving = 1e13
+driving = 6.15845642e9
 
 # Construct
-T_MAX = 15*np.pi / global_coupling
+T_MAX = 3*np.pi / global_coupling
 T_STEPS = 13421
 times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
 

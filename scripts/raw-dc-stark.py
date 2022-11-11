@@ -38,7 +38,7 @@ plt.rcParams["figure.autolayout"] = True
 plt.rcParams['figure.figsize'] = (4, 3.5)
 plt.rcParams['figure.dpi'] = 200
 
-# %matplotlib notebook
+# %matplotlib inline
 # %config InlineBackend.figure_format = 'retina'
 
 # %% [markdown]
@@ -277,7 +277,7 @@ ax2.set_xlabel("Electric Field (kV/cm)")
 ax2.set_ylabel(r"$Re(c_n)$")
 ax2.set_ylim(-1, 1)
 
-fig.show()
+fig
 
 # %% [markdown]
 """
@@ -293,7 +293,6 @@ for i, N, M in state_iter(N_MAX):
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Energy/h (MHz)")
 ax.set_xlim(0, E_MAX)
-fig.show()
 
 # %% [markdown]
 r"""
@@ -364,6 +363,22 @@ $$
 |N',M_N'> = \sum_{N=0}^{\infty}\sum_{M_N=-N}^{N} c_{M,M_N}Y_{M,M_N}
 $$
 """
+
+# %%
+
+dipole_operator = np.zeros((4,4))
+
+def dipole_coef(N1,M1,N2,M2,P):
+    pre = (-1) ** M1 * np.sqrt((2 * N1 + 1) * (2 * N2 + 1))
+    wig = wigner_3j(N1, 1, N2, -M1, P, M2) * wigner_3j(N1, 1, N2, 0, 0, 0)
+    return pre * wig
+
+for i, N1, M1 in state_iter(1):
+    for j, N2, M2 in state_iter(1):
+        dipole_operator[i,j] = dipole_coef(N1,M1,N2,M2,P)
+
+    
+print(dipole_operator)
 
 # %%
 fig, ax = plt.subplots()
