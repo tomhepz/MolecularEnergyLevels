@@ -33,8 +33,8 @@ import scipy.constants
 
 import matplotlib.pyplot as plt
 
-plt.rcParams["text.usetex"] = True
-plt.rcParams["font.family"] = "Helvetica"
+#plt.rcParams["text.usetex"] = True
+plt.rcParams["font.family"] = 'sans-serif'
 plt.rcParams["figure.autolayout"] = True
 plt.rcParams['figure.figsize'] = (4, 3.5)
 plt.rcParams['figure.dpi'] = 200
@@ -44,7 +44,7 @@ plt.rcParams['figure.dpi'] = 200
 
 # %% [markdown]
 """
-# Define Constants
+# Define 'global' Constants
 """
 
 # %%
@@ -53,15 +53,24 @@ H_BAR = scipy.constants.hbar
 I1 = Rb87Cs133["I1"]
 I2 = Rb87Cs133["I2"]
 D_0 = Rb87Cs133["d0"]
-print(D_0)
 N_MAX=1
 
 I = 0 #W/m^2
 E = 0 #V/m
 
-B_MIN = 0.01 # G
-B_MAX = 300 # G
+GAUSS = 1e4 # T
+B_MIN = 0.01 / GAUSS # T
+B_MAX = 400 / GAUSS # T
 B_STEPS = 50
+
+B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
+
+def btoi(b):
+    return (b-B_MIN)/B_STEP_SIZE
+
+def itob(i):
+    return B_STEP_SIZE*i+B_MIN
+
 
 # %% [markdown]
 """
@@ -71,17 +80,15 @@ B_STEPS = 50
 # %%
 H0,Hz,Hdc,Hac = hamiltonian.build_hamiltonians(N_MAX, Rb87Cs133, zeeman=True, Edc=True, ac=True)
 
-B = np.linspace(B_MIN, B_MAX, B_STEPS) * 1e-4 #T
-
 H = H0[..., None]+\
     Hz[..., None]*B+\
     Hdc[..., None]*E+\
     Hac[..., None]*I
 H = H.transpose(2,0,1)
 
-energies, states = eigh(H)
+ENERGIES, STATES = eigh(H)
 
-energies, states, labels = calculate.sort_by_state(energies, states, N_MAX, Rb87Cs133)
+ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES, STATES, N_MAX, Rb87Cs133)
 
 # %% [markdown]
 """
@@ -91,7 +98,7 @@ energies, states, labels = calculate.sort_by_state(energies, states, N_MAX, Rb87
 
 # %%
 def label_to_state_no(N,MF,k):
-    for i, label in enumerate(labels):
+    for i, label in enumerate(LABELS):
         if label[0] == N and label[1] == MF and label[2] == k:
             return i
 
@@ -110,28 +117,44 @@ def state_no_to_uncoupled_label(state_no):
 
 # %% [markdown]
 """
+# General Constants
+"""
+
+# %%
+INITIAL_STATE_LABEL = (0,5,0)
+INITIAL_STATE_POSITION = label_to_state_no(*INITIAL_STATE_LABEL)
+
+# Ordered by energy low->high at 181.5G 
+ACCESSIBLE_STATE_LABELS = [(1, 5, 0), (1, 4, 0), (1, 4, 1), (1, 6, 0), (1, 5, 1), (1, 4, 2), (1, 5, 2), (1, 4, 3), (1, 4, 4), (1, 4, 5)]
+ACCESSIBLE_STATE_POSITIONS = [label_to_state_no(N,MF,k) for N,MF,k in ACCESSIBLE_STATE_LABELS]
+
+CONSIDERED_STATE_LABELS = [INITIAL_STATE_LABEL] + ACCESSIBLE_STATE_LABELS
+CONSIDERED_STATE_POSITIONS = [INITIAL_STATE_POSITION] + ACCESSIBLE_STATE_POSITIONS
+
+# %% [markdown]
+"""
 # Plot energies over B for N=1 and N=2, highlighting available transitions from spin stretched group state
 """
 
 # %%
-fig, (ax_up, ax_down) = plt.subplots(2,1,sharex=True,figsize=(3,5),dpi=200)
+fig, (ax_up, ax_down) = plt.subplots(2,1,sharex=True,figsize=(4,5),dpi=200)
 
-ax_up.plot(B*1e4, energies*1e-6/scipy.constants.h, color='k', linewidth=1, alpha=0.35)
-ax_down.plot(B*1e4, energies*1e-6/scipy.constants.h, color='k', linewidth=1, alpha=0.35)
+ax_up.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=1, alpha=0.35)
+ax_down.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=1, alpha=0.35)
 
 # Highlight available transitions from (0,5,0)
-for i, energy in enumerate(energies.T):
-    if (labels[i]==[0,5,0]).all() or (labels[i][0] == 1 and labels[i][1] in [4,5,6]):
-        c=['b','r','g'][int(labels[i][1]-4)]
+for i, energy in enumerate(ENERGIES.T):
+    if (LABELS[i] == [0, 5, 0]).all() or (LABELS[i][0] == 1 and LABELS[i][1] in [4, 5, 6]):
+        c=['b','r','g'][int(LABELS[i][1] - 4)]
         a=0.8
-        ax_up.plot(B*1e4, energy*1e-6/scipy.constants.h, color=c, linewidth=1, alpha=a)
-        ax_down.plot(B*1e4, energy*1e-6/scipy.constants.h, color=c, linewidth=1, alpha=a)
+        ax_up.plot(B*GAUSS, energy*1e-6/scipy.constants.h, color=c, linewidth=1, alpha=a)
+        ax_down.plot(B*GAUSS, energy*1e-6/scipy.constants.h, color=c, linewidth=1, alpha=a)
         
-ax_up.set_xlim(0, B_MAX)
+ax_up.set_xlim(0, B_MAX*GAUSS)
 ax_up.set_ylim(978.8, 981.0)
 ax_down.set_ylim(-0.98, 0.98)
-ax_up.set_ylabel("Energy/h (MHz)")
-ax_down.set_xlabel("Magnetic Field (G)")
+ax_up.set_ylabel("Energy/$h$ (MHz)")
+ax_down.set_xlabel("Magnetic Field $B_z$ (G)")
 
 # Split axes formatting
 ax_up.spines.bottom.set_visible(False)
@@ -152,15 +175,15 @@ fig.show()
 """
 
 # %%
-fig, ax = plt.subplots()
-
 state_label_to_plot = (1, 4, 3)
 state_num_to_plot = label_to_state_no(*state_label_to_plot)
 
-ax.stackplot(B*1e4, np.abs(states[:, :, state_num_to_plot].T)**2)
+fig, ax = plt.subplots()
+
+ax.stackplot(B * 1e4, np.abs(STATES[:, :, state_num_to_plot].T) ** 2)
 
 cumulative=0
-for component_state_index, component_state_coef in enumerate(states[int(B_STEPS*0.7), :, state_num_to_plot]):
+for component_state_index, component_state_coef in enumerate(STATES[int(B_STEPS * 0.7), :, state_num_to_plot]):
     if np.abs(component_state_coef) > 0.25:
         component_state_label = state_no_to_uncoupled_label(component_state_index)
         component_state_label_string = r'$|N={},M_N={},{},{}\rangle$'.format(*component_state_label)
@@ -170,10 +193,10 @@ for component_state_index, component_state_coef in enumerate(states[int(B_STEPS*
         cumulative += component_state_fraction
 
 ax.set_ylabel(r"$|c_n|^2$")
-ax.set_xlabel("Magnetic Field (G)")
+ax.set_xlabel(r"Magnetic Field $B_z$ (G)")
 ax.set_ylim(0, 1.05)
-ax.set_xlim(0, B_MAX)
-ax.set_title(r'$|N={},M_F={}\rangle_{}$ composition'.format(*state_label_to_plot))
+ax.set_xlim(0, B_MAX*GAUSS)
+ax.set_title(r"$|N={},M_F={}\rangle_{}$ composition".format(*state_label_to_plot))
 
 fig.show()
 
@@ -183,36 +206,43 @@ fig.show()
 """
 
 # %%
-# Set DPI to 300 for print quality
-fig, axs = plt.subplots(5, 2, figsize=(8.5,11.7), dpi=80, sharex=True, sharey=True, layout="constrained")
+# Set DPI to 600 for print quality
+fig, axs = plt.subplots(5,2, figsize=(8.3,11.7), dpi=80, sharex=True, layout="constrained")
 
-state_labels_to_plot = np.array([[(1, 4, 5), (1, 4, 4)],
-                                 [(1, 4, 3), (1, 5, 2)],
-                                 [(1, 4, 2), (1, 5, 1)],
-                                 [(1, 6, 0), (1, 4, 1)],
-                                 [(1, 4, 0), (1, 5, 0)]])
+state_labels_to_plot = np.flip(np.array(ACCESSIBLE_STATE_LABELS, dtype="i,i,i")).reshape(5,2)
 
 for v, axrow in enumerate(axs):
     for h, ax in enumerate(axrow):
         state_label_to_plot = state_labels_to_plot[v][h]
         state_num_to_plot = label_to_state_no(*state_label_to_plot)
 
-        state_coeffs_to_plot = np.abs(states[:, 32:128, state_num_to_plot].T)**2
+        state_coeffs_to_plot = np.abs(STATES[:, 32:128, state_num_to_plot].T) ** 2
         
         color_map = plt.cm.plasma
-        colors = color_map(np.linspace(0, 1, len(state_coeffs_to_plot))) #* [0.9,0.9,0.9,1]
-        colors_special = color_map(np.linspace(0.92, 1, 3))
+        colors = color_map(np.linspace(0.15, 0.9, len(state_coeffs_to_plot)))
+        colors_special = color_map(np.linspace(0.8, 1, 3))
         colors[[0,32,64]] = colors_special
 
         ax.stackplot(B*1e4, state_coeffs_to_plot, colors=colors)
+        
+        max_comp_state_index = state_coeffs_to_plot[:,-1].argmax()+32
+        max_comp_state_label = state_no_to_uncoupled_label(max_comp_state_index)
+        max_comp_state_label_string = r'$|N={},M_N={},{},{}\rangle$'.format(*max_comp_state_label)
+        ax.text(B_MAX*0.99*GAUSS, 0.5, max_comp_state_label_string,
+                va='center', ha='right', fontsize='small')
+        
+        if h==1:
+            ax.yaxis.tick_right()
+            ax.yaxis.set_label_position("right")
 
         ax.set_ylim(0, 1)
-        ax.set_xlim(0, B_MAX)
+        ax.set_xlim(0, B_MAX*GAUSS)
         ax.set_title(r'$|N={},M_F={}\rangle_{}$'.format(*state_label_to_plot))
         ax.axvline(x=181.5,dashes=(3, 2),color='k',linewidth=1)
+        
+        ax.set_ylabel(r"$|\langle N,M_N,M_{{I_1}},M_{{I_2}}|{},{}\rangle_{} |^2$".format(*state_label_to_plot),fontsize=8)
 
-[ax.set_xlabel(r"$B$ (G)") for ax in axs[4,:]]
-[ax.set_ylabel(r"$|c_n|^2$") for ax in axs[:,0]]
+[ax.set_xlabel("Magnetic Field $B_z$ (G)") for ax in axs[4,:]]
 
 fig.show()
 
@@ -228,49 +258,22 @@ right = states[40,:,all_state_positions].T
 mine1 = np.einsum('i,ij,jk->k',left,dipole_op,right).real
 mine2 = (np.conj(states[40,:,initial_state_position]) @ dipole_op @ states[40,:,all_state_positions].T).real
 theirs = calculate.transition_dipole_moment(N_MAX,I1,I2,M,states[40],initial_state_position,locs=all_state_positions)
+mine3big = (STATES.conj().transpose(0, 2, 1) @ dipole_op @ STATES).real
+mine3 = mine3big[40,INITIAL_STATE_POSITION,CONSIDERED_STATE_LABELS]
+mine3reduced=mine3big[40][:,CONSIDERED_STATE_LABELS][CONSIDERED_STATE_LABELS]
 """
 
-initial_state_label = (0,5,0)
-initial_state_position = label_to_state_no(*initial_state_label)
+polarisation=1
+dipole_op = calculate.dipole(N_MAX,I1,I2,1,polarisation)
+tdm_matrices = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
 
-all_state_labels = [(0, 5, 0), (1, 5, 0), (1, 4, 0), (1, 4, 1), (1, 6, 0), (1, 5, 1), (1, 4, 2), (1, 5, 2), (1, 4, 3), (1, 4, 4), (1, 4, 5)]
-all_state_positions = np.array([label_to_state_no(N,MF,k) for N,MF,k in all_state_labels])
-
-M=0
-dipole_op = calculate.dipole(N_MAX,I1,I2,1,M)
-
-
-mine2big = (states[:,:,all_state_positions].conj().transpose(0,2,1) @ (dipole_op @ states[:,:,all_state_positions])).real
-mine2 = mine2big[40,initial_state_position,:]
-
-mine3big = (states.conj().transpose(0,2,1) @ dipole_op @ states).real
-mine3 = mine3big[40,initial_state_position,all_state_positions]
-mine3reduced=mine3big[40][:,all_state_positions][all_state_positions]
-
-fig,ax = plt.subplots()
-ax.plot(B*1e4,np.abs(mine2big[:,initial_state_position,:]))
-ax.set_xlabel(r"$B$ (G)")
+fig, ax = plt.subplots()
+ax.plot(B * 1e4, np.abs(tdm_matrices[:, INITIAL_STATE_POSITION, :]))
+ax.set_xlabel("Magnetic Field $B_z$ (G)")
 ax.set_ylabel(r"Transition Dipole Moment $(d_0)$")
-ax.set_xlim(0, B_MAX)
+ax.set_xlim(0, B_MAX*GAUSS)
 ax.set_ylim(0, 1)
 fig.show()
-
-# %% [markdown]
-"""
-# State mixing table at max B
-"""
-
-# %%
-state_labels = [(1.0, 4.0, 5.0), (1.0, 4.0, 4.0), (1.0, 4.0, 3.0), (1.0, 5.0, 2.0), (1.0, 4.0, 2.0), (1.0, 5.0, 1.0), (1.0, 6.0, 0.0), (1.0, 4.0, 1.0), (1.0, 4.0, 0.0), (1.0, 5.0, 0.0)]
-state_positions = np.array([label_to_state_no(N,MF,k) for N,MF,k in state_labels])
-
-for state_label, state_position in zip(state_labels, state_positions):
-    print(state_label, end=': ')
-    for state_index, state_coef in enumerate(states[B_STEPS-1, :, state_position]):
-        if np.abs(state_coef) > 0.001:
-            print(f'{state_coef.real:=+6.3f}*{state_no_to_uncoupled_label(state_index)}', end=" ")
-    print()
-
 
 # %% [markdown]
 r"""
@@ -292,26 +295,20 @@ $$
 """
 
 # %%
-fig, ax = plt.subplots()
-
 # Experimental Setup
-#INITIAL_STATE = 0
-#INTENDED_STATE = 4
-POLARISATION = 1 # -1,0,1
-DETUNING = 0
-E_0 = 10 # V/m
+POLARISATION = 1  # -1,0,1
+DETUNING = 0 # rad/s
+E_0 = 10  # V/m
 AT_B_NUM = 40
-
-# Get relevant states (N=1, M_F = 4,5,6)
 initial_state_label = (0,5,0)
-initial_state_position = label_to_state_no(*initial_state_label)
-
 intended_state_label = (1,6,0)
+
+initial_state_position = label_to_state_no(*initial_state_label)
 intended_state_position = label_to_state_no(*intended_state_label)
 
 #all_state_labels = [(0, 5, 0), (1, 5, 0), (1, 4, 0), (1, 4, 1), (1, 6, 0), (1, 5, 1), (1, 4, 2), (1, 5, 2), (1, 4, 3), (1, 4, 4), (1, 4, 5)]
 #all_state_positions = np.array([label_to_state_no(N,MF,k) for N,MF,k in all_state_labels])
-angular = (energies[AT_B_NUM,:]-energies[AT_B_NUM,initial_state_position]).real/H_BAR
+angular = (ENERGIES[AT_B_NUM, :] - ENERGIES[AT_B_NUM, initial_state_position]).real / H_BAR
 
 driving = angular[intended_state_position] + DETUNING #6.16038893e+09 # Rad/s, 2pi * (KHz 3, MHz 6, GHz 9)
 
@@ -320,7 +317,7 @@ N_STATES = len(angular)
 dipole_op = calculate.dipole(N_MAX,I1,I2,D_0,POLARISATION)
 #dipole_op = calculate.dipole(N_MAX,I1,I2,D_0,POLARISATION) - calculate.dipole(N_MAX,I1,I2,D_0,-POLARISATION)
 
-couplings = states[AT_B_NUM,:,:].conj().T @ (dipole_op @ states[AT_B_NUM,:,:])
+couplings = STATES[AT_B_NUM, :, :].conj().T @ (dipole_op @ STATES[AT_B_NUM, :, :])
 print(couplings)
 global_coupling = (E_0/H_BAR)
 coupling = global_coupling * couplings
@@ -356,7 +353,8 @@ for i in range(T_STEPS):
     state = np.matmul(unitary,state)
     finals.append(np.abs(state)**2)
 
-    
+
+fig, ax = plt.subplots()
 #ax.set_xlim(0,T_MAX)
 #ax.set_ylim(0,1)
 ax.set_xlabel("t (s)")
@@ -387,7 +385,7 @@ initial_state_position = label_to_state_no(*initial_state_label)
 all_state_labels = [(0, 5, 0), (1, 5, 0), (1, 4, 0), (1, 4, 1), (1, 6, 0), (1, 5, 1), (1, 4, 2), (1, 5, 2), (1, 4, 3), (1, 4, 4), (1, 4, 5)]
 all_state_positions = np.array([label_to_state_no(N,MF,k) for N,MF,k in all_state_labels])
 
-angular = energies[:,all_state_positions].real/H_BAR # [B_Number, state]
+angular = ENERGIES[:, all_state_positions].real / H_BAR # [B_Number, state]
 N_STATES = len(all_state_labels)
 
 driving = angular[:, INTENDED_STATE].T-angular[:, 0]+DETUNING #[B_Number]
@@ -395,7 +393,7 @@ driving = angular[:, INTENDED_STATE].T-angular[:, 0]+DETUNING #[B_Number]
 dipole_op = calculate.dipole(N_MAX,I1,I2,D_0,POLARISATION)
 
 # Construct Rabi coupling part
-couplings = states[:,:,all_state_positions].conj().transpose(0,2,1) @ (dipole_op @ states[:,:,all_state_positions])
+couplings = STATES[:, :, all_state_positions].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, all_state_positions])
 
 global_coupling = (E_0/H_BAR)
 rabis = global_coupling * couplings
@@ -435,19 +433,9 @@ for t_num in range(T_STEPS):
 fig, ax = plt.subplots() 
 ax.set_xlim(B_MIN,B_MAX)
 ax.set_ylim(0,1.1)
-ax.set_xlabel("B(G)")
+ax.set_xlabel("Magnetic Field $B_z$ (G)")
 ax.set_ylabel("Transfer Efficiency $|c_e|^2$")
 
-
-def btoi(b):
-    k = (B_MAX-B_MIN)/(B_STEPS-1)
-    c = B_MIN
-    return (b-c)/k
-
-def itob(i):
-    k = (B_MAX-B_MIN)/(B_STEPS-1)
-    c = B_MIN
-    return k*i+c
 
 
 secax = ax.secondary_xaxis('top', functions=(btoi, itob))
