@@ -32,6 +32,9 @@ from diatom.constants import Rb87Cs133
 import scipy.constants
 
 import matplotlib.pyplot as plt
+import matplotlib.colors
+
+import mpl_interactions.ipyplot as iplt
 
 #plt.rcParams["text.usetex"] = True
 plt.rcParams["font.family"] = 'sans-serif'
@@ -39,7 +42,7 @@ plt.rcParams["figure.autolayout"] = True
 plt.rcParams['figure.figsize'] = (4, 3.5)
 plt.rcParams['figure.dpi'] = 200
 
-# %matplotlib notebook
+# %matplotlib widget
 # %config InlineBackend.figure_format = 'retina'
 
 # %% [markdown]
@@ -61,7 +64,7 @@ E = 0 #V/m
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
 B_MAX = 400 / GAUSS # T
-B_STEPS = 50
+B_STEPS = 100
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -263,7 +266,8 @@ mine3 = mine3big[40,INITIAL_STATE_POSITION,CONSIDERED_STATE_LABELS]
 mine3reduced=mine3big[40][:,CONSIDERED_STATE_LABELS][CONSIDERED_STATE_LABELS]
 """
 
-polarisation=1
+# %%
+polarisation=-1
 dipole_op = calculate.dipole(N_MAX,I1,I2,1,polarisation)
 tdm_matrices = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
 
@@ -295,74 +299,66 @@ $$
 """
 
 # %%
+calculate.dipole(1,0,0,1,-1).real
+
+# %%
 # Experimental Setup
-POLARISATION = 1  # -1,0,1
+POLARISATION = -1  # -1,0,1
 DETUNING = 0 # rad/s
 E_0 = 10  # V/m
 AT_B_NUM = 40
-initial_state_label = (0,5,0)
-intended_state_label = (1,6,0)
+T_STEPS = 2000
+initial_state_considered_index = 0
+intended_state_considered_index = 3
 
-initial_state_position = label_to_state_no(*initial_state_label)
-intended_state_position = label_to_state_no(*intended_state_label)
+N_STATES = len(CONSIDERED_STATE_POSITIONS)
 
-#all_state_labels = [(0, 5, 0), (1, 5, 0), (1, 4, 0), (1, 4, 1), (1, 6, 0), (1, 5, 1), (1, 4, 2), (1, 5, 2), (1, 4, 3), (1, 4, 4), (1, 4, 5)]
-#all_state_positions = np.array([label_to_state_no(N,MF,k) for N,MF,k in all_state_labels])
-angular = (ENERGIES[AT_B_NUM, :] - ENERGIES[AT_B_NUM, initial_state_position]).real / H_BAR
+# Relevent energies as frequencies
+angular = ENERGIES[AT_B_NUM, CONSIDERED_STATE_POSITIONS].real / H_BAR
+driving = angular[intended_state_considered_index] - angular[initial_state_considered_index] + DETUNING
 
-driving = angular[intended_state_position] + DETUNING #6.16038893e+09 # Rad/s, 2pi * (KHz 3, MHz 6, GHz 9)
-
-N_STATES = len(angular)
-# Construct coupling matrix
+# Construct Rabi coupling matrix
 dipole_op = calculate.dipole(N_MAX,I1,I2,D_0,POLARISATION)
-#dipole_op = calculate.dipole(N_MAX,I1,I2,D_0,POLARISATION) - calculate.dipole(N_MAX,I1,I2,D_0,-POLARISATION)
+coupling = STATES[AT_B_NUM, :, CONSIDERED_STATE_POSITIONS].conj() @ dipole_op @ STATES[AT_B_NUM, :, CONSIDERED_STATE_POSITIONS].T
+rabi = (E_0/H_BAR) * coupling
 
-couplings = STATES[AT_B_NUM, :, :].conj().T @ (dipole_op @ STATES[AT_B_NUM, :, :])
-print(couplings)
-global_coupling = (E_0/H_BAR)
-coupling = global_coupling * couplings
+# Construct Time-dependent part
+transition_rabi = np.abs(rabi[initial_state_considered_index, intended_state_considered_index])
+PULSE_TIME = 2*np.pi/transition_rabi if transition_rabi != 0 else 50e-6
+times, DT = np.linspace(0, PULSE_TIME, num=T_STEPS, retstep=True)
 
-# Construct
-T_MAX = 2*np.pi / np.abs(coupling[intended_state_position,initial_state_position])
-T_STEPS = 100
-times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
+wij = angular[:,np.newaxis]-angular[np.newaxis,:]
+neg_frequency_part = wij-driving
+pos_frequency_part = wij+driving
 
-Ts = []
-for t in times:
-    T  = np.zeros((N_STATES,N_STATES), dtype=np.cdouble)
-    for i in range(N_STATES):
-        for j in range(N_STATES):
-            T[i,j] = np.exp((1j)*(angular[i]-angular[j]-driving)*t) + np.exp((1j)*(angular[i]-angular[j]+driving)*t)
-    Ts.append(T)
-Ts = np.array(Ts)
+Ts = np.exp((1j)*neg_frequency_part[np.newaxis,:,:]*times[:,np.newaxis,np.newaxis]) + \
+     np.exp((1j)*pos_frequency_part[np.newaxis,:,:]*times[:,np.newaxis,np.newaxis]) #[ti,i,j]
 
-# Construct Hamiltonians
-H = np.array([H_BAR/2 * np.multiply(coupling, T) for T in Ts])
+# Construct overall Hamiltonians
+Hs = H_BAR/2 * rabi[np.newaxis,:,:] * Ts[:,:,:]  #[ti,i,j]
 
+# Initialise states for each B
+state_vector = np.zeros((N_STATES)) # initial state
+state_vector[initial_state_considered_index] = 1
 
-# Move State
+# Churn Differential equation
+DUs = scipy.linalg.expm(-(1j/H_BAR) * Hs * DT) # Infitesimal unitary transformations
 
 finals = []
 
-state = np.zeros(N_STATES) # initial state
-state[initial_state_position] = 1
-
-
-for i in range(T_STEPS):
-    unitary = scipy.linalg.expm(-(1j)*(DT/H_BAR)*H[i])
-    state = np.matmul(unitary,state)
-    finals.append(np.abs(state)**2)
-
+for t_num in range(T_STEPS):
+    state_vector = DUs[t_num,:,:] @ state_vector
+    finals.append(np.abs(state_vector)**2)
 
 fig, ax = plt.subplots()
 #ax.set_xlim(0,T_MAX)
 #ax.set_ylim(0,1)
-ax.set_xlabel("t (s)")
+ax.set_xlabel("$t (\mu s)$")
 ax.set_ylabel("$|c_e|^2$")
 
 colors = plt.cm.plasma(np.linspace(0,1,N_STATES))
 for i,final in enumerate(np.array(finals).T):
-    ax.plot(times, final, c=colors[i])
+    ax.plot(times*1e6, final, c=colors[i])
 fig.show()
 
 # %% [markdown]
@@ -372,77 +368,151 @@ fig.show()
 
 # %%
 # Experimental Setup
-INITIAL_STATE = 0
-INTENDED_STATE = 7
-POLARISATION = -1 # -1,0,1
+POLARISATION = 0 # -1,0,1
 DETUNING = 0
-E_0 = 10 # V/m
-
-# Get relevant states (N=1, M_F = 4,5,6)
+PULSE_TIME = 100e-6 # s
+T_STEPS = 5000
 initial_state_label = (0,5,0)
-initial_state_position = label_to_state_no(*initial_state_label)
+intended_state_label = (1,4,1)
+POLARISATION=initial_state_label[1]-intended_state_label[1]
 
-all_state_labels = [(0, 5, 0), (1, 5, 0), (1, 4, 0), (1, 4, 1), (1, 6, 0), (1, 5, 1), (1, 4, 2), (1, 5, 2), (1, 4, 3), (1, 4, 4), (1, 4, 5)]
-all_state_positions = np.array([label_to_state_no(N,MF,k) for N,MF,k in all_state_labels])
+initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
+intended_state_considered_index = CONSIDERED_STATE_LABELS.index(intended_state_label)
+initial_state_real_index = CONSIDERED_STATE_POSITIONS[initial_state_considered_index]
+intended_state_real_index = CONSIDERED_STATE_POSITIONS[intended_state_considered_index]
 
-angular = ENERGIES[:, all_state_positions].real / H_BAR # [B_Number, state]
-N_STATES = len(all_state_labels)
+N_STATES = len(CONSIDERED_STATE_POSITIONS)
 
-driving = angular[:, INTENDED_STATE].T-angular[:, 0]+DETUNING #[B_Number]
+# Relevent energies as frequencies
+angular = ENERGIES[:, CONSIDERED_STATE_POSITIONS].real / H_BAR # [B_Number, state]
+driving = angular[:, intended_state_considered_index].T - angular[:, initial_state_considered_index] + DETUNING # [B_Number]
 
-dipole_op = calculate.dipole(N_MAX,I1,I2,D_0,POLARISATION)
-
-# Construct Rabi coupling part
-couplings = STATES[:, :, all_state_positions].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, all_state_positions])
-
-global_coupling = (E_0/H_BAR)
-rabis = global_coupling * couplings
+# Construct Rabi coupling matrix
+dipole_op = calculate.dipole(N_MAX,I1,I2,1,POLARISATION)
+couplings = STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])
+E_0 = np.abs((2*np.pi*H_BAR) / (D_0 * couplings[:, initial_state_considered_index, intended_state_considered_index] * PULSE_TIME))
+rabis = (E_0[:,None,None]/H_BAR) * D_0 * couplings # [B_Number, state, state]
 
 # Construct Time-dependent part
-PI_PULSE_TIMES = 2*np.pi / np.abs(rabis[:,initial_state_position,INTENDED_STATE])
-T_STEPS = 10000
-times, DTs = np.linspace(0, PI_PULSE_TIMES, num=T_STEPS, retstep=True)# [time, B_Number], [B_Number]
-times = times.T #[B_Number, time]
+times, DT = np.linspace(0, PULSE_TIME, num=T_STEPS, retstep=True)# [ti], []
 
 wij = angular[:,:,np.newaxis]-angular[:,np.newaxis,:]    #[bi,i,j]
 neg_frequency_part = wij-driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
 pos_frequency_part = wij+driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
 
-Ts = np.exp((1j)*neg_frequency_part[:,np.newaxis,:,:]*times[:,:,np.newaxis,np.newaxis]) + \
-     np.exp((1j)*pos_frequency_part[:,np.newaxis,:,:]*times[:,:,np.newaxis,np.newaxis]) #[bi, ti,i,j]
+Ts = np.exp((1j)*neg_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) + \
+     np.exp((1j)*pos_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) #[bi, ti,i,j]
 
 # Construct overall Hamiltonians
 Hs = H_BAR/2 * rabis[:,np.newaxis,:,:] * Ts[:,:,:,:]  #[bi, ti,i,j]
 
+# Infitesimal unitary transformations
+DUs = scipy.linalg.expm(-(1j/H_BAR)* Hs * DT) 
 
 # Initialise states for each B
-state_vectors = np.zeros((B_STEPS,N_STATES)) # initial state
-state_vectors[:,INITIAL_STATE] = 1
+state_vectors = np.zeros((B_STEPS,T_STEPS,N_STATES), dtype=np.cdouble) # initial state
+state_vectors[:,0, initial_state_considered_index] = 1
 
-# Churn Differential equation
-max_coef = np.zeros((B_STEPS))
+path = np.einsum_path('bij,bi->bj',DUs[:,0,:,:],state_vectors[:,0,:], optimize='optimal')[0]
+for t_num in range(T_STEPS-1):
+    state_vectors[:,t_num+1,:] = np.einsum('bij,bi->bj',DUs[:,t_num,:,:],state_vectors[:,t_num,:], optimize=path)
+    
+max_vector = (np.abs(state_vectors)**2).max(axis=1) #[bi,i]
 
-Hdts = Hs[:,:,:,:] * DTs[:,np.newaxis,np.newaxis,np.newaxis]
+# %%
+fig, axs = plt.subplots(2,2, figsize=(7,7), dpi=100) 
 
-DUs = scipy.linalg.expm(-(1j/H_BAR)*Hdts[:,:,:,:]) # Infitesimal unitary transformations
+axupleft = axs[0,0]
+axdownleft = axs[1,0]
+axupright = axs[0,1]
+axdownright = axs[1,1]
 
-for t_num in range(T_STEPS):
-    state_vectors = np.einsum('bij,bi->bj',DUs[:,t_num,:,:],state_vectors)
-    max_coef = np.maximum(max_coef[:], np.abs(state_vectors[:,INTENDED_STATE])**2)
+STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,N_STATES))
 
-fig, ax = plt.subplots() 
-ax.set_xlim(B_MIN,B_MAX)
-ax.set_ylim(0,1.1)
-ax.set_xlabel("Magnetic Field $B_z$ (G)")
-ax.set_ylabel("Transfer Efficiency $|c_e|^2$")
+axupleft.set_xlim(0,B_MAX*GAUSS)
+axupleft.set_ylim(0,1.1)
+axupleft.set_xlabel("$B$ (G)")
+axupleft.set_ylabel("Maximum Transfer $|c_i|^2$")
+
+controls = iplt.axvline(x=lambda bi: B[bi]*GAUSS,ax=axupleft,bi=(range(B_STEPS)),dashes=(3, 2),color='k',linewidth=1)
+
+lower_in_all=CONSIDERED_STATE_POSITIONS[initial_state_considered_index]
+upper_in_all=CONSIDERED_STATE_POSITIONS[intended_state_considered_index]
+
+LOWER_LIMS = (-1.2, 0.38)
+UPPER_LIMS = (978.8, 980.7)
+
+line_ratio = lambda bi, state, limits: (ENERGIES[bi,state].real*1e-6/scipy.constants.h-limits[0])/(limits[1]-limits[0])
+iplt.axvline(x=lambda bi: B[bi]*GAUSS, ymax=lambda bi: line_ratio(bi,upper_in_all,UPPER_LIMS), controls=controls["bi"], ax=axupright, dashes=(3, 2),color='k',linewidth=1)
+iplt.axvline(x=lambda bi: B[bi]*GAUSS, ymin=lambda bi: line_ratio(bi,lower_in_all,LOWER_LIMS), controls=controls["bi"], ax=axdownright, dashes=(3, 2),color='k',linewidth=1)
+
+iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m", controls=controls["bi"],ax=axupleft)
+
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,0])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[0])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,1])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[1])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,2])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[2])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,3])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[3])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,4])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[4])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,5])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[5])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,6])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[6])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,7])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[7])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,8])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[8])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,9])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[9])
+iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,10])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[10])
+
+for state_no in range(1,N_STATES):
+    axupleft.plot(B*GAUSS, max_vector[:,state_no],c=STATE_CMAP[state_no])
+
+axdownleft.set_xlim(0,PULSE_TIME*1e6)
+axdownleft.set_ylim(0,1.1)
+axdownleft.set_xlabel("$t$ $(\mu s)$")
+axdownleft.set_ylabel("$|c_i|^2$")
+
+#Plot all energies lightly
+axupright.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1, zorder=1)
+axdownright.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1, zorder=1)
+
+#Highlight lower state
+axdownright.plot(B*GAUSS, ENERGIES[:,initial_state_real_index]*1e-6/scipy.constants.h, color=STATE_CMAP[initial_state_considered_index], linewidth=1)
+
+#Highlight upper states
+for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
+    sub_index += 1
+    this_coupling = np.abs(couplings[:, initial_state_considered_index, sub_index])
+    this_colour = STATE_CMAP[sub_index]
+    metric = this_coupling
+    axupright.plot(B * GAUSS, ENERGIES[:, real_index] * 1e-6 / scipy.constants.h, color='k', alpha=0.4,linewidth=0.6, zorder=3)
+    axupright.scatter(B * GAUSS, ENERGIES[:, real_index] * 1e-6 / scipy.constants.h, color=this_colour, edgecolors=None,alpha=metric,s=metric*60, zorder=2)
+        
+axupright.set_xlim(0, B_MAX*GAUSS)
+axdownright.set_xlim(0, B_MAX*GAUSS)
+axupright.set_ylim(UPPER_LIMS)
+axdownright.set_ylim(LOWER_LIMS)
+axupright.set_ylabel(" ")
+axdownright.yaxis.tick_right()
+axdownright.yaxis.set_label_position("right")
+axupright.yaxis.tick_right()
+axupright.yaxis.set_label_position("right")
+fig.text(1.0, 0.5, 'Energy/$h$ (MHz)', ha='right',va='center', rotation='vertical')
+axdownright.set_xlabel("Magnetic Field $B_z$ (G)")
 
 
+axupright.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+axupright.yaxis.set_minor_locator(plt.MultipleLocator(0.25))
+axdownright.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+axdownright.yaxis.set_minor_locator(plt.MultipleLocator(0.25))
 
-secax = ax.secondary_xaxis('top', functions=(btoi, itob))
-secax.set_xlabel('B index')
+# Split axes formatting
+axupright.spines.bottom.set_visible(False)
+axdownright.spines.top.set_visible(False)
+axupright.xaxis.tick_top()
+axupright.tick_params(labeltop=False)
+axdownright.xaxis.tick_bottom()
+d = .2  # proportion of vertical to horizontal extent of the slanted line
+kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12, linestyle="none", color='k', mec='k', mew=1, clip_on=False)
+axupright.plot([0, 1], [0, 0], transform=axupright.transAxes, **kwargs)
+axdownright.plot([0, 1], [1, 1], transform=axdownright.transAxes, **kwargs)
 
-ax.plot(B*1e4, max_coef)
-
-fig.show()
+#anim = controls.save_animation("bsliding.gif", fig, "bi", interval=100)
 
 # %%

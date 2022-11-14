@@ -15,11 +15,10 @@ python3 -m venv "venv"
 source ./venv/bin/acticate
 # Install pip tools
 pip install pip-tools
-# Compile dependencies
-pip-compile requirements.in
-pip-compile dev-requirements.in
-# Install dependencies
-pip-sync dev-requirements.txt
+# Compile dependencies (implicitly from requirements.in)
+pip-compile
+# Install dependencies (implicitly from generated requirements.txt)
+pip-sync
 
 # Run as script
 python ./scripts/raw-dc-stark.py

@@ -1,5 +1,0 @@
--r requirements.txt
-jupyter
-jupytext
-jupyterlab
-ipympl

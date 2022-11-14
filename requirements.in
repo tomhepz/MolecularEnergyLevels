@@ -1,5 +1,10 @@
 numpy
 scipy
 sympy
+-e file:../Diatomic-Py#egg=diatom
 matplotlib
-git+https://github.com/PhilipDGregory/Diatomic-Py.git#egg=diatom
+jupyter
+jupytext
+jupyterlab
+ipympl
+mpl_interactions[jupyter]
