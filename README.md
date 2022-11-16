@@ -1,6 +1,5 @@
-# What is this?
-
-This code numerically computes the energy levels for a hetronuclear molecule modeled as a rigid rotor within in a DC electric field.
+# diatom-notebooks
+A set of python notebooks for illustrating and explaining calculations involving hetronuclear molecules, specifically RbCs. Heavily uses the [diatom](https://github.com/PhilipDGregory/Diatomic-Py) library.
 
 ![Animation of angular wavefunction with increasing E](/images/Animation.gif)
 
