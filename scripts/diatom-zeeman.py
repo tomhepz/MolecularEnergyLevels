@@ -64,7 +64,7 @@ E = 0 #V/m
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
 B_MAX = 400 / GAUSS # T
-B_STEPS = 100
+B_STEPS = 120
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -134,6 +134,8 @@ ACCESSIBLE_STATE_POSITIONS = [label_to_state_no(N,MF,k) for N,MF,k in ACCESSIBLE
 CONSIDERED_STATE_LABELS = [INITIAL_STATE_LABEL] + ACCESSIBLE_STATE_LABELS
 CONSIDERED_STATE_POSITIONS = [INITIAL_STATE_POSITION] + ACCESSIBLE_STATE_POSITIONS
 
+STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,len(CONSIDERED_STATE_POSITIONS)))
+
 # %% [markdown]
 """
 # Plot energies over B for N=1 and N=2, highlighting available transitions from spin stretched group state
@@ -170,7 +172,7 @@ kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12, linestyle="none", color=
 ax_up.plot([0, 1], [0, 0], transform=ax_up.transAxes, **kwargs)
 ax_down.plot([0, 1], [1, 1], transform=ax_down.transAxes, **kwargs)
 
-fig.show()
+#fig.show()
 
 # %% [markdown]
 """
@@ -201,7 +203,7 @@ ax.set_ylim(0, 1.05)
 ax.set_xlim(0, B_MAX*GAUSS)
 ax.set_title(r"$|N={},M_F={}\rangle_{}$ composition".format(*state_label_to_plot))
 
-fig.show()
+#fig.show()
 
 # %% [markdown]
 """
@@ -247,23 +249,11 @@ for v, axrow in enumerate(axs):
 
 [ax.set_xlabel("Magnetic Field $B_z$ (G)") for ax in axs[4,:]]
 
-fig.show()
+#fig.show()
 
 # %% [markdown]
 """
 # Transition Dipole Moments
-"""
-
-# %%
-"""
-left = np.conj(states[40,:,initial_state_position])
-right = states[40,:,all_state_positions].T
-mine1 = np.einsum('i,ij,jk->k',left,dipole_op,right).real
-mine2 = (np.conj(states[40,:,initial_state_position]) @ dipole_op @ states[40,:,all_state_positions].T).real
-theirs = calculate.transition_dipole_moment(N_MAX,I1,I2,M,states[40],initial_state_position,locs=all_state_positions)
-mine3big = (STATES.conj().transpose(0, 2, 1) @ dipole_op @ STATES).real
-mine3 = mine3big[40,INITIAL_STATE_POSITION,CONSIDERED_STATE_LABELS]
-mine3reduced=mine3big[40][:,CONSIDERED_STATE_LABELS][CONSIDERED_STATE_LABELS]
 """
 
 # %%
@@ -277,7 +267,7 @@ ax.set_xlabel("Magnetic Field $B_z$ (G)")
 ax.set_ylabel(r"Transition Dipole Moment $(d_0)$")
 ax.set_xlim(0, B_MAX*GAUSS)
 ax.set_ylim(0, 1)
-fig.show()
+#fig.show()
 
 # %% [markdown]
 r"""
@@ -359,7 +349,7 @@ ax.set_ylabel("$|c_e|^2$")
 colors = plt.cm.plasma(np.linspace(0,1,N_STATES))
 for i,final in enumerate(np.array(finals).T):
     ax.plot(times*1e6, final, c=colors[i])
-fig.show()
+#fig.show()
 
 # %% [markdown]
 """
@@ -367,13 +357,14 @@ fig.show()
 """
 
 # %%
+#for intended_state_label in ACCESSIBLE_STATE_LABELS:
 # Experimental Setup
 POLARISATION = 0 # -1,0,1
 DETUNING = 0
 PULSE_TIME = 100e-6 # s
 T_STEPS = 5000
 initial_state_label = (0,5,0)
-intended_state_label = (1,4,1)
+intended_state_label = (1,5,1)
 POLARISATION=initial_state_label[1]-intended_state_label[1]
 
 initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
@@ -416,103 +407,124 @@ state_vectors[:,0, initial_state_considered_index] = 1
 path = np.einsum_path('bij,bi->bj',DUs[:,0,:,:],state_vectors[:,0,:], optimize='optimal')[0]
 for t_num in range(T_STEPS-1):
     state_vectors[:,t_num+1,:] = np.einsum('bij,bi->bj',DUs[:,t_num,:,:],state_vectors[:,t_num,:], optimize=path)
-    
+
 max_vector = (np.abs(state_vectors)**2).max(axis=1) #[bi,i]
 
-# %%
-fig, axs = plt.subplots(2,2, figsize=(7,7), dpi=100) 
+####################################
 
-axupleft = axs[0,0]
-axdownleft = axs[1,0]
-axupright = axs[0,1]
-axdownright = axs[1,1]
+# Create axes
+gs_kw = dict(width_ratios=[1, 1, 1], height_ratios=[1, 1])
+fig, axd = plt.subplot_mosaic([['upper left','upper middle' ,'right'],
+                               ['lower left','lower middle' ,'right']],
+                              gridspec_kw=gs_kw, figsize=(10, 7), dpi=80, layout="constrained"
+                              )
+ax_max_trans = axd["upper left"]
+ax_rabi_osc = axd["lower left"]
+ax_up_zeeman = axd["upper middle"]
+ax_down_zeeman = axd["lower middle"]
+ax_detuning = axd["right"]
 
-STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,N_STATES))
+# Set figure title
+p_string = [r"\pi",r"\sigma_+",r"\sigma_-"]
+fig.suptitle(r" ${}$ Transition $|{},{}\rightangle_{} \rightarrow |{},{}\rightangle_{}$ on Resonance.".format(p_string[POLARISATION],*initial_state_label,*intended_state_label))
 
-axupleft.set_xlim(0,B_MAX*GAUSS)
-axupleft.set_ylim(0,1.1)
-axupleft.set_xlabel("$B$ (G)")
-axupleft.set_ylabel("Maximum Transfer $|c_i|^2$")
+# Setup Max Transfer plot
+for state_no in range(1,N_STATES):
+    ax_max_trans.plot(B * GAUSS, max_vector[:, state_no], c=STATE_CMAP[state_no])
 
-controls = iplt.axvline(x=lambda bi: B[bi]*GAUSS,ax=axupleft,bi=(range(B_STEPS)),dashes=(3, 2),color='k',linewidth=1)
+ax_max_trans.set_xlim(0, B_MAX * GAUSS)
+ax_max_trans.set_ylim(0, 1.1)
+ax_max_trans.set_xlabel("$B$ (G)")
+ax_max_trans.set_ylabel("Maximum Transfer $|c_i|^2$")
+controls = iplt.axvline(x=lambda bi: B[bi]*GAUSS, ax=ax_max_trans, bi=(range(B_STEPS)), dashes=(3, 2), color='k', linewidth=1)
 
-lower_in_all=CONSIDERED_STATE_POSITIONS[initial_state_considered_index]
-upper_in_all=CONSIDERED_STATE_POSITIONS[intended_state_considered_index]
+# Setup Rabi Oscillation plot
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,0])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[0])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,1])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[1])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,2])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[2])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,3])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[3])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,4])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[4])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,5])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[5])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,6])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[6])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,7])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[7])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,8])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[8])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,9])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[9])
+iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,10])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[10])
+
+iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m", controls=controls["bi"], ax=ax_rabi_osc)
+ax_rabi_osc.set_xlim(0, PULSE_TIME * 1e6)
+ax_rabi_osc.set_ylim(0, 1.1)
+ax_rabi_osc.set_xlabel("$t$ $(\mu s)$")
+ax_rabi_osc.set_ylabel("$|c_i|^2$")
+
+# Setup Zeeman plots & Detuning
+# Plot all energies lightly on zeeman
+ax_up_zeeman.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1, zorder=1)
+ax_down_zeeman.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1, zorder=1)
+
+# Highlight specific lower state
+ax_down_zeeman.plot(B * GAUSS, ENERGIES[:, initial_state_real_index] * 1e-6 / scipy.constants.h, color=STATE_CMAP[initial_state_considered_index], linewidth=1)
+# Highlight specific upper states
+for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
+    sub_index += 1
+    metric = np.abs(couplings[:, initial_state_considered_index, sub_index])
+    this_colour = STATE_CMAP[sub_index]
+    # Zeeman plot levels
+    energy_mhz =  ENERGIES[:, real_index] * 1e-6 / scipy.constants.h
+    ax_up_zeeman.plot(B * GAUSS, energy_mhz,
+                      color='k', alpha=0.4, linewidth=0.6, zorder=3
+                      )
+    ax_up_zeeman.scatter(B * GAUSS, energy_mhz,
+                         color=this_colour, edgecolors=None, alpha=metric, s=metric ** 2 * 300, zorder=2
+                         )
+    # Detuning plot levels
+    detuning_rabi = ((ENERGIES[:, real_index] - ENERGIES[:, intended_state_real_index]) / scipy.constants.h) / 1e4
+    ax_detuning.plot(B * GAUSS, detuning_rabi, color='k', alpha=0.2, linewidth=0.5, zorder=3)
+    ax_detuning.scatter(B * GAUSS, detuning_rabi, color=this_colour, edgecolors=None, alpha=metric,
+                        s=metric ** 1.8 * 1000, zorder=2)
 
 LOWER_LIMS = (-1.2, 0.38)
 UPPER_LIMS = (978.8, 980.7)
+ax_up_zeeman.set_xlim(0, B_MAX * GAUSS)
+ax_down_zeeman.set_xlim(0, B_MAX * GAUSS)
+ax_up_zeeman.set_ylim(UPPER_LIMS)
+ax_down_zeeman.set_ylim(LOWER_LIMS)
+ax_up_zeeman.set_ylabel(" ")
+fig.text(0.35, 0.5, 'Energy/$h$ (MHz)', ha='left',va='center', rotation='vertical')
+ax_down_zeeman.set_xlabel("Magnetic Field $B_z$ (G)")
+ax_up_zeeman.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+ax_up_zeeman.yaxis.set_minor_locator(plt.MultipleLocator(0.25))
+ax_down_zeeman.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+ax_down_zeeman.yaxis.set_minor_locator(plt.MultipleLocator(0.25))
 
+# Draw vlines
+lower_in_all=CONSIDERED_STATE_POSITIONS[initial_state_considered_index]
+upper_in_all=CONSIDERED_STATE_POSITIONS[intended_state_considered_index]
 line_ratio = lambda bi, state, limits: (ENERGIES[bi,state].real*1e-6/scipy.constants.h-limits[0])/(limits[1]-limits[0])
-iplt.axvline(x=lambda bi: B[bi]*GAUSS, ymax=lambda bi: line_ratio(bi,upper_in_all,UPPER_LIMS), controls=controls["bi"], ax=axupright, dashes=(3, 2),color='k',linewidth=1)
-iplt.axvline(x=lambda bi: B[bi]*GAUSS, ymin=lambda bi: line_ratio(bi,lower_in_all,LOWER_LIMS), controls=controls["bi"], ax=axdownright, dashes=(3, 2),color='k',linewidth=1)
+iplt.axvline(x=lambda bi: B[bi]*GAUSS, ymax=lambda bi: line_ratio(bi,upper_in_all,UPPER_LIMS), controls=controls["bi"], ax=ax_up_zeeman, dashes=(3, 2), color='k', linewidth=1)
+iplt.axvline(x=lambda bi: B[bi]*GAUSS, ymin=lambda bi: line_ratio(bi,lower_in_all,LOWER_LIMS), controls=controls["bi"], ax=ax_down_zeeman, dashes=(3, 2), color='k', linewidth=1)
+iplt.axvline(x=lambda bi: B[bi]*GAUSS, controls=controls["bi"], ax=ax_detuning, dashes=(3, 2), color='k', linewidth=1)
 
-iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m", controls=controls["bi"],ax=axupleft)
-
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,0])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[0])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,1])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[1])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,2])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[2])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,3])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[3])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,4])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[4])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,5])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[5])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,6])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[6])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,7])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[7])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,8])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[8])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,9])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[9])
-iplt.plot(times*1e6, lambda t, bi: np.abs(state_vectors[bi,:,10])**2, controls=controls["bi"], ax=axdownleft,c=STATE_CMAP[10])
-
-for state_no in range(1,N_STATES):
-    axupleft.plot(B*GAUSS, max_vector[:,state_no],c=STATE_CMAP[state_no])
-
-axdownleft.set_xlim(0,PULSE_TIME*1e6)
-axdownleft.set_ylim(0,1.1)
-axdownleft.set_xlabel("$t$ $(\mu s)$")
-axdownleft.set_ylabel("$|c_i|^2$")
-
-#Plot all energies lightly
-axupright.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1, zorder=1)
-axdownright.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1, zorder=1)
-
-#Highlight lower state
-axdownright.plot(B*GAUSS, ENERGIES[:,initial_state_real_index]*1e-6/scipy.constants.h, color=STATE_CMAP[initial_state_considered_index], linewidth=1)
-
-#Highlight upper states
-for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
-    sub_index += 1
-    this_coupling = np.abs(couplings[:, initial_state_considered_index, sub_index])
-    this_colour = STATE_CMAP[sub_index]
-    metric = this_coupling
-    axupright.plot(B * GAUSS, ENERGIES[:, real_index] * 1e-6 / scipy.constants.h, color='k', alpha=0.4,linewidth=0.6, zorder=3)
-    axupright.scatter(B * GAUSS, ENERGIES[:, real_index] * 1e-6 / scipy.constants.h, color=this_colour, edgecolors=None,alpha=metric,s=metric*60, zorder=2)
-        
-axupright.set_xlim(0, B_MAX*GAUSS)
-axdownright.set_xlim(0, B_MAX*GAUSS)
-axupright.set_ylim(UPPER_LIMS)
-axdownright.set_ylim(LOWER_LIMS)
-axupright.set_ylabel(" ")
-axdownright.yaxis.tick_right()
-axdownright.yaxis.set_label_position("right")
-axupright.yaxis.tick_right()
-axupright.yaxis.set_label_position("right")
-fig.text(1.0, 0.5, 'Energy/$h$ (MHz)', ha='right',va='center', rotation='vertical')
-axdownright.set_xlabel("Magnetic Field $B_z$ (G)")
-
-
-axupright.yaxis.set_major_locator(plt.MultipleLocator(0.5))
-axupright.yaxis.set_minor_locator(plt.MultipleLocator(0.25))
-axdownright.yaxis.set_major_locator(plt.MultipleLocator(0.5))
-axdownright.yaxis.set_minor_locator(plt.MultipleLocator(0.25))
-
-# Split axes formatting
-axupright.spines.bottom.set_visible(False)
-axdownright.spines.top.set_visible(False)
-axupright.xaxis.tick_top()
-axupright.tick_params(labeltop=False)
-axdownright.xaxis.tick_bottom()
+# Split axes formatting on zeeman
+ax_up_zeeman.spines.bottom.set_visible(False)
+ax_down_zeeman.spines.top.set_visible(False)
+ax_up_zeeman.xaxis.tick_top()
+ax_up_zeeman.tick_params(labeltop=False)
+ax_down_zeeman.xaxis.tick_bottom()
 d = .2  # proportion of vertical to horizontal extent of the slanted line
 kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12, linestyle="none", color='k', mec='k', mew=1, clip_on=False)
-axupright.plot([0, 1], [0, 0], transform=axupright.transAxes, **kwargs)
-axdownright.plot([0, 1], [1, 1], transform=axdownright.transAxes, **kwargs)
+ax_up_zeeman.plot([0, 1], [0, 0], transform=ax_up_zeeman.transAxes, **kwargs)
+ax_down_zeeman.plot([0, 1], [1, 1], transform=ax_down_zeeman.transAxes, **kwargs)
 
-#anim = controls.save_animation("bsliding.gif", fig, "bi", interval=100)
+# Setup detuning plot
+ax_detuning.set_xlim(0, B_MAX * GAUSS)
+ax_detuning.set_xlabel("Magnetic Field $B_z$ (G)")
+ax_detuning.set_ylabel("Detuning $(\Omega)$")
+ax_detuning.yaxis.set_major_locator(plt.MultipleLocator(5))
+ax_detuning.yaxis.set_minor_locator(plt.MultipleLocator(2.5))
+
+#anim = controls.save_animation("bsliding{}-{}-{}.mp4".format(*intended_state_label), fig, "bi", interval=100)
+
+#fig.show()
 
 # %%
