@@ -1,5 +1,5 @@
 # diatom-notebooks
-A set of python notebooks for illustrating and explaining calculations involving hetronuclear molecules, specifically RbCs. Heavily uses the [diatom](https://github.com/PhilipDGregory/Diatomic-Py) library.
+A set of python notebooks for showcasing and explaining calculations involving hetronuclear molecules, specifically RbCs. Heavily uses the [diatom](https://github.com/PhilipDGregory/Diatomic-Py) library.
 
 ![Animation of angular wavefunction with increasing E](/images/Animation.gif)
 
