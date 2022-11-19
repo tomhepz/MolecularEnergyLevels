@@ -357,6 +357,7 @@ for i,final in enumerate(np.array(finals).T):
 """
 
 # %%
+# #%%perf
 #for intended_state_label in ACCESSIBLE_STATE_LABELS:
 # Experimental Setup
 POLARISATION = 0 # -1,0,1
@@ -364,7 +365,7 @@ DETUNING = 0
 PULSE_TIME = 100e-6 # s
 T_STEPS = 5000
 initial_state_label = (0,5,0)
-intended_state_label = (1,5,1)
+intended_state_label = (1,4,4)
 POLARISATION=initial_state_label[1]-intended_state_label[1]
 
 initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
@@ -410,8 +411,8 @@ for t_num in range(T_STEPS-1):
 
 max_vector = (np.abs(state_vectors)**2).max(axis=1) #[bi,i]
 
-####################################
 
+# %%
 # Create axes
 gs_kw = dict(width_ratios=[1, 1, 1], height_ratios=[1, 1])
 fig, axd = plt.subplot_mosaic([['upper left','upper middle' ,'right'],
@@ -439,19 +440,23 @@ ax_max_trans.set_ylabel("Maximum Transfer $|c_i|^2$")
 controls = iplt.axvline(x=lambda bi: B[bi]*GAUSS, ax=ax_max_trans, bi=(range(B_STEPS)), dashes=(3, 2), color='k', linewidth=1)
 
 # Setup Rabi Oscillation plot
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,0])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[0])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,1])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[1])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,2])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[2])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,3])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[3])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,4])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[4])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,5])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[5])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,6])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[6])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,7])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[7])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,8])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[8])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,9])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[9])
-iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,10])**2, controls=controls["bi"], ax=ax_rabi_osc, c=STATE_CMAP[10])
+plt.sca(ax_rabi_osc) # set current matplotlib axes
+with controls["bi"]:
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,0])**2,c=STATE_CMAP[0])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,1])**2,c=STATE_CMAP[1])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,2])**2,c=STATE_CMAP[2])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,3])**2,c=STATE_CMAP[3])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,4])**2,c=STATE_CMAP[4])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,5])**2,c=STATE_CMAP[5])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,6])**2,c=STATE_CMAP[6])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,7])**2,c=STATE_CMAP[7])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,8])**2,c=STATE_CMAP[8])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,9])**2,c=STATE_CMAP[9])
+    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,10])**2, c=STATE_CMAP[10])
+        
 
-iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m", controls=controls["bi"], ax=ax_rabi_osc)
+    iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m")
+
 ax_rabi_osc.set_xlim(0, PULSE_TIME * 1e6)
 ax_rabi_osc.set_ylim(0, 1.1)
 ax_rabi_osc.set_xlabel("$t$ $(\mu s)$")
@@ -478,7 +483,7 @@ for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
                          color=this_colour, edgecolors=None, alpha=metric, s=metric ** 2 * 300, zorder=2
                          )
     # Detuning plot levels
-    detuning_rabi = ((ENERGIES[:, real_index] - ENERGIES[:, intended_state_real_index]) / scipy.constants.h) / 1e4
+    detuning_rabi = ((ENERGIES[:, real_index] - ENERGIES[:, intended_state_real_index]) / scipy.constants.h) / (1/PULSE_TIME)
     ax_detuning.plot(B * GAUSS, detuning_rabi, color='k', alpha=0.2, linewidth=0.5, zorder=3)
     ax_detuning.scatter(B * GAUSS, detuning_rabi, color=this_colour, edgecolors=None, alpha=metric,
                         s=metric ** 1.8 * 1000, zorder=2)
@@ -520,11 +525,93 @@ ax_down_zeeman.plot([0, 1], [1, 1], transform=ax_down_zeeman.transAxes, **kwargs
 ax_detuning.set_xlim(0, B_MAX * GAUSS)
 ax_detuning.set_xlabel("Magnetic Field $B_z$ (G)")
 ax_detuning.set_ylabel("Detuning $(\Omega)$")
-ax_detuning.yaxis.set_major_locator(plt.MultipleLocator(5))
-ax_detuning.yaxis.set_minor_locator(plt.MultipleLocator(2.5))
+#ax_detuning.yaxis.set_major_locator(plt.MultipleLocator(5))
+#ax_detuning.yaxis.set_minor_locator(plt.MultipleLocator(2.5))
 
 #anim = controls.save_animation("bsliding{}-{}-{}.mp4".format(*intended_state_label), fig, "bi", interval=100)
 
 #fig.show()
+refs
+
+# %%
+refs
+
+# %% [markdown]
+r"""
+# Split Operator Method
+Using a split operator method based on the The Lie product formula and it's Suzuki–Trotter expansion
+$$\hat{H} = T + V = \hat{H}_0 + d \cdot E(t)$$
+as a matrix
+$$TODO$$
+Then
+$$\psi(t+\Delta t) = e^{-\frac{i}{\hbar} (T+V)\Delta T} \psi(t) = e^{-\frac{i}{\hbar}T\Delta t/2}e^{-\frac{i}{\hbar}V\Delta t}e^{-\frac{i}{\hbar}T\Delta t/2}\psi(t) + O((\Delta t)^3)$$
+"""
+
+# %%
+#for intended_state_label in ACCESSIBLE_STATE_LABELS:
+# Experimental Setup
+POLARISATION = 0 # -1,0,1
+DETUNING = 0
+PULSE_TIME = 100e-6 # s
+T_STEPS = 5000
+initial_state_label = (0,5,0)
+intended_state_label = (1,4,4)
+POLARISATION=initial_state_label[1]-intended_state_label[1]
+
+initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
+intended_state_considered_index = CONSIDERED_STATE_LABELS.index(intended_state_label)
+initial_state_real_index = CONSIDERED_STATE_POSITIONS[initial_state_considered_index]
+intended_state_real_index = CONSIDERED_STATE_POSITIONS[intended_state_considered_index]
+
+N_STATES = len(CONSIDERED_STATE_POSITIONS)
+
+# Get Angular Frequency Matrix Diagonal for each B
+angular = ENERGIES[:, CONSIDERED_STATE_POSITIONS].real / H_BAR # [B_Number, state]
+
+# Get Driving Frequency for each B
+driving = angular[:, intended_state_considered_index].T - angular[:, initial_state_considered_index] + DETUNING # [B_Number]
+
+# Get Rabi coupling matrix for each B
+dipole_op = calculate.dipole(N_MAX,I1,I2,1,POLARISATION)
+couplings = STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])
+E_0 = np.abs((2*np.pi*H_BAR) / (D_0 * couplings[:, initial_state_considered_index, intended_state_considered_index] * PULSE_TIME))
+rabis = (E_0[:,None,None]/H_BAR) * D_0 * couplings # [B_Number, state, state]
+
+# Construct Times
+times, DT = np.linspace(0, PULSE_TIME, num=T_STEPS, retstep=True)# [ti], []
+
+# Construct kinetic time step operator (Matrix Diagonal)
+T_OP = np.exp(-(1j) * angular * DT/2 )
+
+# Construct potential fixed part time step operator 
+V_FIX_OP = scipy.linalg.expm(-(1j) * rabis * DT )
+
+# Construct time dependednt prefactor
+V_TIMES = 
+
+wij = angular[:,:,np.newaxis]-angular[:,np.newaxis,:]    #[bi,i,j]
+neg_frequency_part = wij-driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
+pos_frequency_part = wij+driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
+
+Ts = np.exp((1j)*neg_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) + \
+     np.exp((1j)*pos_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) #[bi, ti,i,j]
+
+# Construct overall Hamiltonians
+Hs = H_BAR/2 * rabis[:,np.newaxis,:,:] * Ts[:,:,:,:]  #[bi, ti,i,j]
+
+# Infitesimal unitary transformations
+DUs = scipy.linalg.expm(-(1j/H_BAR)* Hs * DT) 
+
+# Initialise states for each B
+state_vectors = np.zeros((B_STEPS,T_STEPS,N_STATES), dtype=np.cdouble) # initial state
+state_vectors[:,0, initial_state_considered_index] = 1
+
+path = np.einsum_path('bij,bi->bj',DUs[:,0,:,:],state_vectors[:,0,:], optimize='optimal')[0]
+for t_num in range(T_STEPS-1):
+    state_vectors[:,t_num+1,:] = np.einsum('bij,bi->bj',DUs[:,t_num,:,:],state_vectors[:,t_num,:], optimize=path)
+
+max_vector = (np.abs(state_vectors)**2).max(axis=1) #[bi,i]
+
+# %%
 
 # %%
