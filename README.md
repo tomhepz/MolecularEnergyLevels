@@ -1,9 +1,8 @@
 # diatom-notebooks
 A set of python notebooks for showcasing and explaining calculations involving hetronuclear molecules, specifically RbCs. Heavily uses the [diatom](https://github.com/PhilipDGregory/Diatomic-Py) library.
-
-![Animation of angular wavefunction with increasing E](/images/Animation.gif)
-
-![energy level splitting diagram](/images/DCStarkRigidRotor.png)
+a             |  b
+:-------------------------:|:-------------------------:
+![Animation of angular wavefunction with increasing E](/images/Animation.gif)  | ![energy level splitting diagram](/images/Figure 33.png)
 
 # Installation
 
