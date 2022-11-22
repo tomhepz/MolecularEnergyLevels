@@ -35,6 +35,9 @@ import matplotlib.pyplot as plt
 import matplotlib.colors
 
 import mpl_interactions.ipyplot as iplt
+from mpl_interactions.controller import Controls
+
+from functools import partial
 
 #plt.rcParams["text.usetex"] = True
 plt.rcParams["font.family"] = 'sans-serif'
@@ -64,7 +67,7 @@ E = 0 #V/m
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
 B_MAX = 400 / GAUSS # T
-B_STEPS = 120
+B_STEPS = 200
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -272,13 +275,11 @@ ax.set_ylim(0, 1)
 # %% [markdown]
 r"""
 # Rabi oscillations
+## Unitary `expm` method
 $$
 \newcommand{\ket}[1]{\left|{#1}\right\rangle}
 \newcommand{\bra}[1]{\left\langle{#1}\right|}
 \newcommand{\braket}[2]{\left\langle{#1}\middle|{#2}\right\rangle}
-$$
-$$
-H_{ij} = \frac{\hbar}{2} \Omega_{ij} \odot T_{ij}
 $$
 $$
 \Omega_{ij} = \frac{E_0}{\hbar} \bra{i} \mathbf{\hat{d}} \cdot \mathbf{\hat{\epsilon}} \ket{j}
@@ -286,17 +287,18 @@ $$
 $$
 T_{ij} = e^{i(w_{ij}-w)t} + e^{i(w_{ij}+w)t}
 $$
+Forming an overall Hamiltonian, where $\odot$ represents element wise multiplication
+$$
+H_{ij} = \frac{\hbar}{2} \Omega_{ij} \odot T_{ij}
+$$
 """
-
-# %%
-calculate.dipole(1,0,0,1,-1).real
 
 # %%
 # Experimental Setup
 POLARISATION = -1  # -1,0,1
 DETUNING = 0 # rad/s
 E_0 = 10  # V/m
-AT_B_NUM = 40
+AT_B_NUM = 20
 T_STEPS = 2000
 initial_state_considered_index = 0
 intended_state_considered_index = 3
@@ -352,18 +354,32 @@ for i,final in enumerate(np.array(finals).T):
 #fig.show()
 
 # %% [markdown]
-"""
+r"""
 # Transfer efficiency
+## Split Operator Method
+Using a split operator method based on the The Lie product formula and it's Suzuki–Trotter expansion
+$$\hat{H} = T + V = \hat{H}_0 + d \cdot E(t)$$
+as a matrix
+$$TODO$$
+Then
+$$\psi(t+\Delta t) = e^{-\frac{i}{\hbar} (T+V)\Delta T} \psi(t) = e^{-\frac{i}{\hbar}T\Delta t/2}e^{-\frac{i}{\hbar}V\Delta t}e^{-\frac{i}{\hbar}T\Delta t/2}\psi(t) + O((\Delta t)^3)$$
+
+Memory Usage:
+
+$$ sizeof(CDOUBLE) * T * B * S^2$$
+
+E.g. for 5000 T Steps, 300 B steps, and 11 States:
+$$(8*2)*5000*300*11^2 = 2,904,000,000 B = 2.9 GB$$
 """
 
 # %%
-# #%%perf
+# #%%time
 #for intended_state_label in ACCESSIBLE_STATE_LABELS:
 # Experimental Setup
 POLARISATION = 0 # -1,0,1
 DETUNING = 0
 PULSE_TIME = 100e-6 # s
-T_STEPS = 5000
+T_STEPS = 10000
 initial_state_label = (0,5,0)
 intended_state_label = (1,4,4)
 POLARISATION=initial_state_label[1]-intended_state_label[1]
@@ -375,41 +391,45 @@ intended_state_real_index = CONSIDERED_STATE_POSITIONS[intended_state_considered
 
 N_STATES = len(CONSIDERED_STATE_POSITIONS)
 
-# Relevent energies as frequencies
+# Get Angular Frequency Matrix Diagonal for each B
 angular = ENERGIES[:, CONSIDERED_STATE_POSITIONS].real / H_BAR # [B_Number, state]
+
+# Get Driving Frequency for each B
 driving = angular[:, intended_state_considered_index].T - angular[:, initial_state_considered_index] + DETUNING # [B_Number]
 
-# Construct Rabi coupling matrix
+# Get Rabi coupling matrix for each B
 dipole_op = calculate.dipole(N_MAX,I1,I2,1,POLARISATION)
 couplings = STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])
 E_0 = np.abs((2*np.pi*H_BAR) / (D_0 * couplings[:, initial_state_considered_index, intended_state_considered_index] * PULSE_TIME))
-rabis = (E_0[:,None,None]/H_BAR) * D_0 * couplings # [B_Number, state, state]
 
-# Construct Time-dependent part
+# Construct Times
 times, DT = np.linspace(0, PULSE_TIME, num=T_STEPS, retstep=True)# [ti], []
 
-wij = angular[:,:,np.newaxis]-angular[:,np.newaxis,:]    #[bi,i,j]
-neg_frequency_part = wij-driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
-pos_frequency_part = wij+driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
+# Construct 'kinetic' time step operator (Matrix Diagonal)
+T_OP_DIAG = np.exp(-(1j) * angular * DT/2 )
+T_OP = np.array([np.diag(v) for v in T_OP_DIAG])
 
-Ts = np.exp((1j)*neg_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) + \
-     np.exp((1j)*pos_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) #[bi, ti,i,j]
+# Construct potential fixed part time step operator 
+ORDER = 6
 
-# Construct overall Hamiltonians
-Hs = H_BAR/2 * rabis[:,np.newaxis,:,:] * Ts[:,:,:,:]  #[bi, ti,i,j]
+V_TI_M = (-(1j)*D_0*DT/H_BAR)*E_0[:,None,None]*couplings #[Bi,i,j]
+V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) for i in range(ORDER)]) #[c,Bi,i,j]
 
-# Infitesimal unitary transformations
-DUs = scipy.linalg.expm(-(1j/H_BAR)* Hs * DT) 
+#Initialise states for each B
+state_vectors = np.zeros((T_STEPS,B_STEPS,N_STATES), dtype=np.cdouble) # initial state
+state_vectors[0,:, initial_state_considered_index] = 1
 
-# Initialise states for each B
-state_vectors = np.zeros((B_STEPS,T_STEPS,N_STATES), dtype=np.cdouble) # initial state
-state_vectors[:,0, initial_state_considered_index] = 1
-
-path = np.einsum_path('bij,bi->bj',DUs[:,0,:,:],state_vectors[:,0,:], optimize='optimal')[0]
 for t_num in range(T_STEPS-1):
-    state_vectors[:,t_num+1,:] = np.einsum('bij,bi->bj',DUs[:,t_num,:,:],state_vectors[:,t_num,:], optimize=path)
+    
+    V_TD = np.cos(driving*times[t_num]) # bi
+    V_TD_POWS = np.array([V_TD**i for i in range(ORDER)])
+    
+    V_OP = np.sum(V_TI_M_POWS*V_TD_POWS[...,None,None],axis=0) # [Bi,i,j]
 
-max_vector = (np.abs(state_vectors)**2).max(axis=1) #[bi,i]
+    DU = T_OP @ V_OP @ T_OP
+    state_vectors[t_num+1] =  np.einsum('bij,bi->bj', DU, state_vectors[t_num])
+
+max_vector = (np.abs(state_vectors)**2).max(axis=0) #[bi,i]
 
 
 # %%
@@ -425,6 +445,10 @@ ax_up_zeeman = axd["upper middle"]
 ax_down_zeeman = axd["lower middle"]
 ax_detuning = axd["right"]
 
+# Create controls
+controls = Controls(bi=range(B_STEPS))
+display(controls)
+
 # Set figure title
 p_string = [r"\pi",r"\sigma_+",r"\sigma_-"]
 fig.suptitle(r" ${}$ Transition $|{},{}\rightangle_{} \rightarrow |{},{}\rightangle_{}$ on Resonance.".format(p_string[POLARISATION],*initial_state_label,*intended_state_label))
@@ -437,23 +461,18 @@ ax_max_trans.set_xlim(0, B_MAX * GAUSS)
 ax_max_trans.set_ylim(0, 1.1)
 ax_max_trans.set_xlabel("$B$ (G)")
 ax_max_trans.set_ylabel("Maximum Transfer $|c_i|^2$")
-controls = iplt.axvline(x=lambda bi: B[bi]*GAUSS, ax=ax_max_trans, bi=(range(B_STEPS)), dashes=(3, 2), color='k', linewidth=1)
+iplt.axvline(x=lambda bi: B[bi]*GAUSS, ax=ax_max_trans, controls=controls, dashes=(3, 2), color='k', linewidth=1)
 
 # Setup Rabi Oscillation plot
 plt.sca(ax_rabi_osc) # set current matplotlib axes
+
+def to_plot(t,bi,si):
+    return np.abs(state_vectors[:,bi,si])**2
+
 with controls["bi"]:
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,0])**2,c=STATE_CMAP[0])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,1])**2,c=STATE_CMAP[1])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,2])**2,c=STATE_CMAP[2])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,3])**2,c=STATE_CMAP[3])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,4])**2,c=STATE_CMAP[4])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,5])**2,c=STATE_CMAP[5])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,6])**2,c=STATE_CMAP[6])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,7])**2,c=STATE_CMAP[7])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,8])**2,c=STATE_CMAP[8])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,9])**2,c=STATE_CMAP[9])
-    iplt.plot(times * 1e6, lambda t, bi: np.abs(state_vectors[bi,:,10])**2, c=STATE_CMAP[10])
-        
+    for i in range(10):
+        partial_f = partial(to_plot, si=i)
+        iplt.plot(times * 1e6, partial_f,c=STATE_CMAP[i])
 
     iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m")
 
@@ -531,87 +550,3 @@ ax_detuning.set_ylabel("Detuning $(\Omega)$")
 #anim = controls.save_animation("bsliding{}-{}-{}.mp4".format(*intended_state_label), fig, "bi", interval=100)
 
 #fig.show()
-refs
-
-# %%
-refs
-
-# %% [markdown]
-r"""
-# Split Operator Method
-Using a split operator method based on the The Lie product formula and it's Suzuki–Trotter expansion
-$$\hat{H} = T + V = \hat{H}_0 + d \cdot E(t)$$
-as a matrix
-$$TODO$$
-Then
-$$\psi(t+\Delta t) = e^{-\frac{i}{\hbar} (T+V)\Delta T} \psi(t) = e^{-\frac{i}{\hbar}T\Delta t/2}e^{-\frac{i}{\hbar}V\Delta t}e^{-\frac{i}{\hbar}T\Delta t/2}\psi(t) + O((\Delta t)^3)$$
-"""
-
-# %%
-#for intended_state_label in ACCESSIBLE_STATE_LABELS:
-# Experimental Setup
-POLARISATION = 0 # -1,0,1
-DETUNING = 0
-PULSE_TIME = 100e-6 # s
-T_STEPS = 5000
-initial_state_label = (0,5,0)
-intended_state_label = (1,4,4)
-POLARISATION=initial_state_label[1]-intended_state_label[1]
-
-initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
-intended_state_considered_index = CONSIDERED_STATE_LABELS.index(intended_state_label)
-initial_state_real_index = CONSIDERED_STATE_POSITIONS[initial_state_considered_index]
-intended_state_real_index = CONSIDERED_STATE_POSITIONS[intended_state_considered_index]
-
-N_STATES = len(CONSIDERED_STATE_POSITIONS)
-
-# Get Angular Frequency Matrix Diagonal for each B
-angular = ENERGIES[:, CONSIDERED_STATE_POSITIONS].real / H_BAR # [B_Number, state]
-
-# Get Driving Frequency for each B
-driving = angular[:, intended_state_considered_index].T - angular[:, initial_state_considered_index] + DETUNING # [B_Number]
-
-# Get Rabi coupling matrix for each B
-dipole_op = calculate.dipole(N_MAX,I1,I2,1,POLARISATION)
-couplings = STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])
-E_0 = np.abs((2*np.pi*H_BAR) / (D_0 * couplings[:, initial_state_considered_index, intended_state_considered_index] * PULSE_TIME))
-rabis = (E_0[:,None,None]/H_BAR) * D_0 * couplings # [B_Number, state, state]
-
-# Construct Times
-times, DT = np.linspace(0, PULSE_TIME, num=T_STEPS, retstep=True)# [ti], []
-
-# Construct kinetic time step operator (Matrix Diagonal)
-T_OP = np.exp(-(1j) * angular * DT/2 )
-
-# Construct potential fixed part time step operator 
-V_FIX_OP = scipy.linalg.expm(-(1j) * rabis * DT )
-
-# Construct time dependednt prefactor
-V_TIMES = 
-
-wij = angular[:,:,np.newaxis]-angular[:,np.newaxis,:]    #[bi,i,j]
-neg_frequency_part = wij-driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
-pos_frequency_part = wij+driving[:,np.newaxis,np.newaxis]   #[bi,i,j]
-
-Ts = np.exp((1j)*neg_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) + \
-     np.exp((1j)*pos_frequency_part[:,np.newaxis,:,:]*times[np.newaxis,:,np.newaxis,np.newaxis]) #[bi, ti,i,j]
-
-# Construct overall Hamiltonians
-Hs = H_BAR/2 * rabis[:,np.newaxis,:,:] * Ts[:,:,:,:]  #[bi, ti,i,j]
-
-# Infitesimal unitary transformations
-DUs = scipy.linalg.expm(-(1j/H_BAR)* Hs * DT) 
-
-# Initialise states for each B
-state_vectors = np.zeros((B_STEPS,T_STEPS,N_STATES), dtype=np.cdouble) # initial state
-state_vectors[:,0, initial_state_considered_index] = 1
-
-path = np.einsum_path('bij,bi->bj',DUs[:,0,:,:],state_vectors[:,0,:], optimize='optimal')[0]
-for t_num in range(T_STEPS-1):
-    state_vectors[:,t_num+1,:] = np.einsum('bij,bi->bj',DUs[:,t_num,:,:],state_vectors[:,t_num,:], optimize=path)
-
-max_vector = (np.abs(state_vectors)**2).max(axis=1) #[bi,i]
-
-# %%
-
-# %%
