@@ -382,4 +382,67 @@ ax.set_ylabel("$|c_e|^2$")
 ax.plot(times, finals)
 fig.show()
 
+# %% [markdown]
+"""
+# Fast
+"""
+
+
+# %%
+def peakProbabilities(angular, coupling, pulse_time=100e-6, initial=0, intended=1, time_steps=10000):
+    """
+    angular - 1D numpy array of angular frequencies (via w=E/H_BAR)
+    coupling - 2D numpy coupling (symmetric) matrix between states
+    pulse_time - intended 2-Pi pulse duration in seconds
+    initial - index of initial state in angular
+    intended - index of intended state in angular
+    time_steps - number of timesteps to simulate
+    """
+
+    # Pick incoming radiation parameters
+    driving = angular[intended] - angular[initial] 
+    E_0 = np.abs((2*np.pi*H_BAR) / (coupling[initial, intended] * pulse_time))
+
+    # Make times
+    times, DT = np.linspace(0, pulse_time, num=time_steps, retstep=True)# [ti], []
+
+    # Construct 'kinetic' time step operator (Matrix Diagonal)
+    T_OP_DIAG = np.exp(-(1j) * angular * DT/2 )
+
+    # Construct potential fixed part time step operator 
+    ORDER = 6
+    V_TI_M = (-(1j)*DT/H_BAR)*E_0*coupling
+    V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) for i in range(ORDER)])
+    
+    # Construct time dependent part
+    V_TDS = np.cos(driving*times) #[ti]
+    V_TDS_POWS = V_TDS**np.arange(ORDER)[:,None] #[c,ti]
+    V_OPS = np.sum(V_TI_M_POWS[:,None,:,:]*V_TDS_POWS[:,:,None,None], axis=0) #[ti,s,s]
+    
+    # Construct differential unitary transformations
+    DUS =  T_OP_DIAG[None,:,None] * V_OPS * T_OP_DIAG[None,None,:]
+
+    # Initial state
+    N_STATES = len(angular)
+    state_vector = np.zeros((N_STATES), dtype=np.cdouble)
+    state_vector[initial] = 1
+    max_amp_vector = np.zeros((N_STATES), dtype=np.double)
+    max_amp_vector[initial] = 1
+
+    # Run differential equation
+    for t_num in range(time_steps-1):
+        state_vector = DUS[t_num] @ state_vector
+        max_amp_vector = np.maximum(max_amp_vector, np.abs(state_vector))
+
+    return max_amp_vector**2
+
+
+# %%
+angular = np.array([1e5,1e9,1.1e9])
+coupling = np.array([[0.0, 1.0, 0.8],
+                     [1.0, 0.0, 0.0],
+                     [0.8, 0.0, 0.0]])
+
+peakProbabilities(angular,coupling,pulse_time=1e-10,time_steps=10000)
+
 # %%

@@ -550,3 +550,6 @@ ax_detuning.set_ylabel("Detuning $(\Omega)$")
 #anim = controls.save_animation("bsliding{}-{}-{}.mp4".format(*intended_state_label), fig, "bi", interval=100)
 
 #fig.show()
+
+# %%
+print(angular)
