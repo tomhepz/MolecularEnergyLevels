@@ -67,7 +67,7 @@ E = 0 #V/m
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
 B_MAX = 400 / GAUSS # T
-B_STEPS = 200
+B_STEPS = 50
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -298,7 +298,7 @@ $$
 POLARISATION = -1  # -1,0,1
 DETUNING = 0 # rad/s
 E_0 = 10  # V/m
-AT_B_NUM = 20
+AT_B_NUM = int(B_STEPS/2)
 T_STEPS = 2000
 initial_state_considered_index = 0
 intended_state_considered_index = 3
@@ -373,7 +373,7 @@ $$(8*2)*5000*300*11^2 = 2,904,000,000 B = 2.9 GB$$
 """
 
 # %%
-# #%%time
+# %%time
 #for intended_state_label in ACCESSIBLE_STATE_LABELS:
 # Experimental Setup
 POLARISATION = 0 # -1,0,1
@@ -474,7 +474,7 @@ with controls["bi"]:
         partial_f = partial(to_plot, si=i)
         iplt.plot(times * 1e6, partial_f,c=STATE_CMAP[i])
 
-    iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m")
+    #iplt.title(lambda bi: f"$E_0$={E_0[bi]:.2f} V/m")
 
 ax_rabi_osc.set_xlim(0, PULSE_TIME * 1e6)
 ax_rabi_osc.set_ylim(0, 1.1)
@@ -551,5 +551,106 @@ ax_detuning.set_ylabel("Detuning $(\Omega)$")
 
 #fig.show()
 
+# %% [markdown]
+"""
+# 2-parameter plots
+"""
+
 # %%
-print(angular)
+PULSE_MIN = 100e-7
+PULSE_MAX = 100e-5
+PULSE_NUM = 50
+PULSE_TIMES = np.linspace(PULSE_MIN,PULSE_MAX,num=PULSE_NUM)
+
+T_STEPS = 10000
+initial_state_label = (0,5,0)
+intended_state_label = (1,4,4)
+POLARISATION=initial_state_label[1]-intended_state_label[1]
+
+initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
+intended_state_considered_index = CONSIDERED_STATE_LABELS.index(intended_state_label)
+initial_state_real_index = CONSIDERED_STATE_POSITIONS[initial_state_considered_index]
+intended_state_real_index = CONSIDERED_STATE_POSITIONS[intended_state_considered_index]
+
+N_STATES = len(CONSIDERED_STATE_POSITIONS)
+
+# Get Angular Frequency Matrix Diagonal for each B
+angular = ENERGIES[:, CONSIDERED_STATE_POSITIONS].real / H_BAR # [bi, i]
+
+# Get Driving Frequency for each B
+driving = angular[:, intended_state_considered_index].T - angular[:, initial_state_considered_index] + DETUNING # [bi]
+
+# Get Rabi coupling matrix for each B
+dipole_op = calculate.dipole(N_MAX,I1,I2,1,POLARISATION)
+couplings = STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])
+
+# Get desired E field for each B and rabi frequency
+#[pi,bi]
+E_0 = np.abs((2*np.pi*H_BAR) / (D_0 * couplings[None, :, initial_state_considered_index, intended_state_considered_index] * PULSE_TIMES[:,None]))
+
+# Construct Times
+times, DT = np.linspace(0, PULSE_TIMES, num=T_STEPS, retstep=True)# [ti,pi], [pi]
+
+# # Construct 'kinetic' time step operator (Matrix Diagonal)
+T_OP_DIAG = np.exp(-(1j) * angular[None,:,:] * DT[:,None,None]/2 ) # [pi,bi,i]
+
+# Construct potential fixed part time step operator 
+ORDER = 6
+
+V_TI_M = (-(1j)*D_0*DT[:,None,None,None]/H_BAR)*E_0[:,:,None,None]*couplings #[pi,bi,i,j]
+V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) for i in range(ORDER)]) #[c,pi,bi,i,j]
+
+#Initialise states for each B
+state_vector = np.zeros((PULSE_NUM,B_STEPS,N_STATES), dtype=np.cdouble)
+state_vector[:,:, initial_state_considered_index] = 1
+max_amp_vector = np.zeros((PULSE_NUM,B_STEPS,N_STATES), dtype=np.cdouble)
+max_amp_vector[:,:, initial_state_considered_index] = 1
+
+for t_num in range(T_STEPS-1):
+    
+    V_TD = np.cos(driving[None,:]*times[t_num,:,None]) # [pi,bi]
+    V_TD_POWS = V_TD[None,...]**(np.arange(ORDER)[:,None,None]) # [ci,pi,bi]
+    V_OP = np.sum(V_TI_M_POWS*V_TD_POWS[...,None,None],axis=0) # [pi,bi,i,j]
+
+    DU = T_OP_DIAG[:,:,:,None] * V_OP[:,:,:,:] * T_OP_DIAG[:,:,None,:]
+    state_vector = np.einsum('pbij,pbi->pbj',DU,state_vector)
+    max_amp_vector = np.maximum(max_amp_vector, np.abs(state_vector))
+
+
+fig,ax = plt.subplots()
+
+b_grid, p_grid = np.meshgrid(B,PULSE_TIMES)
+#levels=[0.001,0.5,0.9,0.95,0.99,0.995,0.999,1]
+
+CLIP=0.0005
+
+def _forward(x):
+    return np.log(1-x+CLIP)/np.log(CLIP)
+
+def _inverse(x):
+    return 1+CLIP-CLIP^x
+
+
+levels = 1-np.logspace(0,-6,50)
+norm = matplotlib.colors.FuncNorm((_forward, _inverse), vmin=0, vmax=1)
+
+noted_levels=[0.9,0.99,0.999]
+cf = ax.contourf(b_grid*GAUSS,p_grid*1e6,max_amp_vector[:,:,intended_state_considered_index]**2, levels, norm=norm)
+CS1 = ax.contour(b_grid*GAUSS,p_grid*1e6,max_amp_vector[:,:,intended_state_considered_index]**2,noted_levels,
+                 colors='w',linestyles='dashed',linewidths=1,alpha=0.8)
+
+fmt = {}
+strs = ["90%","99%","99.9%"]
+for l, s in zip(CS1.levels, strs):
+    fmt[l] = s
+
+ax.clabel(CS1, CS1.levels, inline=True, fmt=fmt, fontsize=5)
+fig.colorbar(cf, ax=ax)
+#ax.set_xlim(F_MIN,F_MAX)
+#ax.set_yscale('log')
+#ax.set_xlabel("Rabi Frequency $\Omega$ (Hz)")
+ax.set_xlabel("Magnetic Field $B_z$ (G)")
+ax.set_ylabel("Rabi Period ($\mu$s)")
+ax.set_title("Maximum Transfer $|c_i|^2$")
+
+# %%

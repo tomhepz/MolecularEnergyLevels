@@ -389,7 +389,7 @@ fig.show()
 
 
 # %%
-def peakProbabilities(angular, coupling, pulse_time=100e-6, initial=0, intended=1, time_steps=10000):
+def peakProbabilities(angular, coupling, pulse_time=100e-6, initial=0, intended=1, time_steps=10000, debug=False):
     """
     angular - 1D numpy array of angular frequencies (via w=E/H_BAR)
     coupling - 2D numpy coupling (symmetric) matrix between states
@@ -410,17 +410,9 @@ def peakProbabilities(angular, coupling, pulse_time=100e-6, initial=0, intended=
     T_OP_DIAG = np.exp(-(1j) * angular * DT/2 )
 
     # Construct potential fixed part time step operator 
-    ORDER = 6
+    ORDER = 4
     V_TI_M = (-(1j)*DT/H_BAR)*E_0*coupling
     V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) for i in range(ORDER)])
-    
-    # Construct time dependent part
-    V_TDS = np.cos(driving*times) #[ti]
-    V_TDS_POWS = V_TDS**np.arange(ORDER)[:,None] #[c,ti]
-    V_OPS = np.sum(V_TI_M_POWS[:,None,:,:]*V_TDS_POWS[:,:,None,None], axis=0) #[ti,s,s]
-    
-    # Construct differential unitary transformations
-    DUS =  T_OP_DIAG[None,:,None] * V_OPS * T_OP_DIAG[None,None,:]
 
     # Initial state
     N_STATES = len(angular)
@@ -428,13 +420,29 @@ def peakProbabilities(angular, coupling, pulse_time=100e-6, initial=0, intended=
     state_vector[initial] = 1
     max_amp_vector = np.zeros((N_STATES), dtype=np.double)
     max_amp_vector[initial] = 1
+    
+#     state_vectors = np.zeros((time_steps,N_STATES), dtype=np.cdouble) 
+#     state_vectors[0] = state_vector
+    
+    V_TDS = np.cos(driving*times) #[ti]
+    V_TDS_POWS = V_TDS**(np.arange(ORDER)[:,None]) #[c,ti]
+    
+    V_OPS = np.sum(V_TI_M_POWS[:,None,:,:]*V_TDS_POWS[:,:,None,None], axis=0) #[ti,s,s]
+    DUS =  T_OP_DIAG[None,:,None] * V_OPS * T_OP_DIAG[None,None,:]
 
     # Run differential equation
     for t_num in range(time_steps-1):
+#        V_TD = np.cos(driving*times[t_num])
+#        V_TD_POWS = V_TD**np.arange(ORDER)
+
+#        V_OP = np.sum(V_TI_M_POWS*V_TD_POWS[:,None,None], axis=0)
+
+#        DU = T_OP_DIAG[:,None] * V_OP * T_OP_DIAG[None,:]  # = T @ V @ T
         state_vector = DUS[t_num] @ state_vector
+        #state_vectors[t_num+1] = state_vector
         max_amp_vector = np.maximum(max_amp_vector, np.abs(state_vector))
 
-    return max_amp_vector**2
+    return max_amp_vector**2 #, state_vectors
 
 
 # %%
@@ -443,6 +451,50 @@ coupling = np.array([[0.0, 1.0, 0.8],
                      [1.0, 0.0, 0.0],
                      [0.8, 0.0, 0.0]])
 
-peakProbabilities(angular,coupling,pulse_time=1e-10,time_steps=10000)
+max_probabilities = peakProbabilities(angular,coupling,pulse_time=10,time_steps=10000)
+
+# print(max_probabilities)
+# fig,ax = plt.subplots()
+# ax.plot(np.abs(vectors[:,1]))
+# fig.show()
+
+# %%
+F_N = 50
+F_MIN = 0.001
+F_MAX = 0.05
+
+D_N = 50
+D_MIN = 0.01
+D_MAX = 0.5
+
+BASE = 1
+COUPLING = np.array([[0.0, 1.0, 0.8],
+                     [1.0, 0.0, 0.0],
+                     [0.8, 0.0, 0.0]])
+
+rabis = np.linspace(F_MIN,F_MAX,num=F_N)
+detunings = np.linspace(D_MIN,D_MAX,num=D_N)
+
+rabis_grid, detuning_grid = np.meshgrid(rabis,detunings)
+
+fidelity_grid = np.zeros((D_N, F_N))
+
+for fi in range(F_N):
+    for di in range(D_N):
+        fidelity_grid[di,fi] = peakProbabilities(np.array([0,BASE,BASE+detunings[di]]),COUPLING,pulse_time=1/rabis[fi],time_steps=10000)[1]
+
+# %%
+    
+fig,ax = plt.subplots()
+
+cf = ax.contourf(rabis_grid,detuning_grid/(2*np.pi),fidelity_grid,20)
+fig.colorbar(cf, ax=ax)
+#ax.set_xlim(F_MIN,F_MAX)
+#ax.set_xscale('log')
+ax.set_xlabel("Rabi Frequency $\Omega$ (Hz)")
+#ax.set_xlabel("2$\pi$-Pulse Time (s)")
+ax.set_ylim(D_MIN/(2*np.pi),D_MAX/(2*np.pi))
+ax.set_ylabel("Detuning (Hz)")
+ax.set_title("Maximum Transfer $|c_i|^2$")
 
 # %%
