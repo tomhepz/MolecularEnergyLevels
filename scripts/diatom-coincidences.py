@@ -60,7 +60,6 @@ H_BAR = scipy.constants.hbar
 
 I1 = Rb87Cs133["I1"]
 I2 = Rb87Cs133["I2"]
-print(I1,I2)
 D_0 = Rb87Cs133["d0"]
 N_MAX=2
 
@@ -69,8 +68,8 @@ E = 0 #V/m
 
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
-B_MAX = 250 / GAUSS # T
-B_STEPS = 500
+B_MAX = 350 / GAUSS # T
+B_STEPS = 350
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -154,15 +153,15 @@ STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,len(CONSIDERED_STATE_POSITIONS)
 """
 
 # %%
-fig, (ax1,ax2) = plt.subplots(2,1)
+fig, (ax1,ax2) = plt.subplots(2,1,sharex=True)
 muN = scipy.constants.physical_constants['nuclear magneton'][0]
 
-ax1.plot(B*GAUSS,MAGNETIC_MOMENTS[:,0:32]/muN, color='grey', alpha=0.3,linewidth=0.5,zorder=0);
+ax1.plot(B*GAUSS,MAGNETIC_MOMENTS[:,180:]/muN, color='grey', alpha=0.3,linewidth=0.5,zorder=0);
 ax1.set_xlim(0,200)
 ax1.set_ylabel("Magnetic Moment $\mu$ $(\mu_N)$")
 ax1.set_xlabel("Magnetic Field $B_z$ (G)")
 
-ax2.plot(B*GAUSS,ENERGIES[:,0:32]/muN, color='grey', alpha=0.3,linewidth=0.5,zorder=0);
+ax2.plot(B*GAUSS,ENERGIES[:,128:]/muN, color='grey', alpha=0.3,linewidth=0.5,zorder=0);
 ax2.set_xlim(0,200)
 ax2.set_ylabel("Energy")
 ax2.set_xlabel("Magnetic Field $B_z$ (G)")
@@ -215,7 +214,7 @@ for state_mf in state_mfs:
         for j in range(label_degeneracy(1,state_mf[1])):
             for k in range(label_degeneracy(2,state_mf[2])):
                 for l in range(label_degeneracy(1,state_mf[3])):
-                    if j==l:
+                    if (state_mf[1]<state_mf[3]) or (state_mf[1]==state_mf[3] and j<=l):
                         continue
                     states.append([(0,state_mf[0],i),(1,state_mf[1],j),(2,state_mf[2],k),(1,state_mf[3],l)])
                     
@@ -223,65 +222,65 @@ print(len(states), "states to consider")
 
 # %%
 ranking = []
+where = []
 for state_posibility in states:
-    # Find Coincidences
-    nintersections = 0
+    #Want to minimise sum of differences^2
+    diff_total=np.zeros(B_STEPS,dtype=np.double)
+
     for state_a, state_b in itertools.combinations(state_posibility,2):
         state_a_num=label_to_state_no(*state_a)
         state_b_num=label_to_state_no(*state_b)
         if state_a_num==None or state_b_num==None:
-            print(state_a,"or",state_b, "could not be found in basis")
-            continue
-        diff = MAGNETIC_MOMENTS[:,state_a_num]-MAGNETIC_MOMENTS[:,state_b_num]
-        sign_flip_low_indices = np.where(np.sign(diff[:-1]) != np.sign(diff[1:]))[0]
-        nintersections += len(sign_flip_low_indices)
+            #print(state_a,"or",state_b, "could not be found in basis")
+            diff_total += 20*np.ones((B_STEPS))
+        else:
+            diff = np.abs(MAGNETIC_MOMENTS[:,state_a_num]-MAGNETIC_MOMENTS[:,state_b_num])**2
+            diff_total += diff
         #xs = (B[sign_flip_low_indices] + B[sign_flip_low_indices+1])*GAUSS/2
         #ys = (moment_a[sign_flip_low_indices]+moment_a[sign_flip_low_indices+1])/(2*muN)
         # ax.scatter(xs, ys,color='k',s=0.4,zorder=1)
-    ranking.append(nintersections)
+    min_diff_loc = np.argmin(diff_total, axis=0)
+    min_diff = diff_total[min_diff_loc]
     
-#print(ranking)
-order = (-1*np.array(ranking,dtype=np.int)).argsort()
-#print(order)
+    where.append(min_diff_loc)
+    ranking.append(min_diff)
+
+ranking=np.array(ranking)
+order = ranking.argsort()
+
+where_interesting = np.array(where)[order]
 interesting_states = np.array(states)[order]
 
 # %%
-fig, axs = plt.subplots(7,7,figsize=(12,12),dpi=60)
+fig, axs = plt.subplots(5,5,figsize=(10,10),dpi=100,sharex=True,sharey=True)
 
 i=0
 for axh in axs:
     for ax in axh:
         state_numbers = np.array([label_to_state_no(*state_label) for state_label in interesting_states[i]])
-        ax.plot(B*GAUSS,MAGNETIC_MOMENTS[:,state_numbers]/muN, alpha=1,linewidth=0.5,zorder=0);
+        ax.set_xlim(0,B_MAX*GAUSS)
+        ax.set_ylim(2,6)
+        ax.plot(B*GAUSS,MAGNETIC_MOMENTS[:,state_numbers]/muN, alpha=1,linewidth=0.5,zorder=1);
+        ax.axvline(x=B[where_interesting[i]]*GAUSS, dashes=(3, 2), color='k', linewidth=1,alpha=0.4,zorder=0)
         i+=1
 
+fig.text(0.5, 0.009, 'Magnetic Field $B_z$ (G)', ha='center', va='center')
+fig.text(0.009, 0.5, 'Magnetic Moment $\mu$ $(\mu_N)$', ha='center', va='center', rotation='vertical')
+
+
 # %%
-fig, ax = plt.subplots()
-muN = scipy.constants.physical_constants['nuclear magneton'][0]
-#import itertools
+def transfer_efficiency(ai,bi):
+    return 0.9
 
-focus_moments = magnetic_moments[:,[52,55]].T
-#to_plot = [(0,5,0),(0,4,0),(0,3,0),(0,4,1),(0,3,1),(0,3,2)]
-#to_plot_indices = np.array([label_to_state_no(N,MF,k) for N,MF,k in to_plot])
 
-#c = plt.cm.gist_rainbow(np.linspace(0,1,96))
-#for moment in focus_moments:
-    #this_c = c[i]
-ax.plot(B*GAUSS,focus_moments.T/muN, alpha=0.3,linewidth=0.5,zorder=0);
-    #ax.text(1.02*B_MAX*GAUSS, moment[-1]/muN, r'$|N={},M_F={}\rangle_{}$'.format(int(label[0]),int(label[1]),int(label[2])), va='center', ha='left', fontsize=2, color = this_c)
-    
-    #Find coincidences
+# %%
+# Simulate microwave transfers to find 'fidelity'
+focus_state = interesting_states[0]
+p=1
+for i in range(4):
+    state_a_pos = label_to_state_no(*focus_state[i%4])
+    state_b_pos = label_to_state_no(*focus_state[(i+1)%4])
+    p *= transfer_efficiency(state_a_pos,state_b_pos)
 
-# for moment_a,moment_b in itertools.combinations(focus_moments,2):
-#     diff = moment_a-moment_b
-#     sign_flip_low_indices = np.where(np.sign(diff[:-1]) != np.sign(diff[1:]))[0]
-#     xs = (B[sign_flip_low_indices] + B[sign_flip_low_indices+1])*GAUSS/2
-#     ys = (moment_a[sign_flip_low_indices]+moment_a[sign_flip_low_indices+1])/(2*muN)
-#     ax.scatter(xs, ys,color='k',s=0.4,zorder=1)
-    
-#ax.set_ylim(5.5,1.5)
-ax.set_xlim(0,B_MAX*GAUSS)
-ax.set_ylabel("Magnetic Moment $\mu$ $(\mu_N)$")
-ax.set_xlabel("Magnetic Field $B_z$ (G)")
 
 # %%

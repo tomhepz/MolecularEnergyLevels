@@ -381,7 +381,7 @@ DETUNING = 0
 PULSE_TIME = 100e-6 # s
 T_STEPS = 10000
 initial_state_label = (0,5,0)
-intended_state_label = (1,4,2)
+intended_state_label = (1,4,5)
 POLARISATION=initial_state_label[1]-intended_state_label[1]
 
 initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
@@ -550,6 +550,41 @@ ax_detuning.set_ylabel("Detuning $(\Omega)$")
 #anim = controls.save_animation("bsliding{}-{}-{}.mp4".format(*intended_state_label), fig, "bi", interval=100)
 
 #fig.show()
+
+# %% [markdown] tags=[]
+"""
+# Equivelent single rabi
+"""
+
+# %%
+fig,(ax,axr) = plt.subplots(1,2)
+i=0
+for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
+    sub_index += 1
+    absg=np.abs(couplings[:, initial_state_considered_index, sub_index])
+    g = np.abs(couplings[:, initial_state_considered_index, sub_index]/couplings[:, initial_state_considered_index, intended_state_considered_index])
+    this_colour = STATE_CMAP[sub_index]
+    # Detuning plot levels
+    k = ((ENERGIES[:, real_index] - ENERGIES[:, intended_state_real_index]) / scipy.constants.h) / (1/PULSE_TIME)
+    ax.plot(B * GAUSS, k, color='k', alpha=0.2, linewidth=0.5, zorder=3)
+    ax.scatter(B * GAUSS, k, color=this_colour, edgecolors=None, alpha=absg, s=absg ** 1.8 * 1000, zorder=2)
+    average = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+    if sub_index == intended_state_considered_index:
+        continue
+    axr.plot(B * GAUSS, -np.log10(1-average+1e-8), color=this_colour, alpha=1, linewidth=1)
+    
+#axr.set_ylim(0,1.1)
+#ax2 = axr.twinx()
+axr.set_ylim(0,8)
+axr.set_ylabel("Transition Fidelity $(-\log_{10}(1-T))$")
+#ax2.set_yticks(np.linspace(0,8,9),100*(1-np.logspace(0,-8,9)))
+
+ax.set_xlim(0, B_MAX * GAUSS)
+axr.set_xlim(0, B_MAX * GAUSS)
+ax.set_xlabel("Magnetic Field $B_z$ (G)")
+ax.set_ylabel("Detuning $(\Omega)$")
+
+# %%
 
 # %% [markdown]
 """
