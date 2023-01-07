@@ -38,6 +38,8 @@ plt.rcParams["figure.autolayout"] = True
 plt.rcParams['figure.figsize'] = (4, 3.5)
 plt.rcParams['figure.dpi'] = 200
 
+plt.rc('text.latex', preamble=r'\usepackage[T1]{fontenc}\usepackage{cmbright}')
+
 # %matplotlib inline
 # %config InlineBackend.figure_format = 'retina'
 
@@ -59,7 +61,7 @@ N_MAX = 7  #  No. of Rotational base states 0 <= N <= N_MAX
 
 E_MIN = 1e-2  # Min E Field in kV/cm, non-zero to stop 3-fold degeneracy at 0 field.
 E_MAX = 20  # Max E Field in kV/cm
-E_STEPS = 200  # Resolution of E Field range
+E_STEPS = 400  # Resolution of E Field range
 
 POLAR_PLOT_RES = 50
 
@@ -256,19 +258,43 @@ energies, states = sort_smooth(energies, states)
 
 # %% [markdown]
 """
+# Coefficeint Mixing
+"""
+
+# %%
+fig, ax = plt.subplots(figsize=(3,3))
+
+state = state_to_pos(1, 0)
+probs = np.abs(states[:, :, state]) ** 2
+
+important_count = 7
+sorti = np.argsort(-probs[E_STEPS-1,:])
+importantprobs = probs[:,sorti[:important_count]]
+    
+col = cm.plasma(np.linspace(0, 1, important_count))
+ax.stackplot(E * (D_0 / B_0), importantprobs.T,colors=col)
+ax.set_ylabel(r"$|c_n|^2$")
+ax.set_xlabel("Electric Field $(B_0/d_0)$")
+ax.set_ylim(0, 1.0)
+ax.set_xlim(0, 25)
+fig.savefig('../images/state-mixing-1-0.pdf')
+
+# %% [markdown]
+"""
 # Looking at Coefficient mixing (debug)
 """
 
 # %%
 fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-state = state_to_pos(3, 1)
+state = state_to_pos(1, 0)
 probs, reals = [], []
 for coefn in range(STATE_COUNT):
     probs.append(np.abs(states[:, coefn, state]) ** 2)
     reals.append(states[:, coefn, state].real)
-
-ax1.stackplot(E * 1e-5, probs)
+    
+col = cm.plasma(np.linspace(0, 1, 10))
+ax1.stackplot(E * 1e-5, probs,colors=col)
 ax1.set_ylabel(r"$|c_n|^2$")
 ax1.set_ylim(0, 1.2)
 
@@ -294,6 +320,27 @@ ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Energy/h (MHz)")
 ax.set_xlim(0, E_MAX)
 
+# %%
+fig, ax = plt.subplots()
+
+s=7
+ax.plot(E * 1e-5, energies[:, s] * 1e-6 / scipy.constants.h)
+
+selected_state = states[int(E_STEPS/2),:,s]
+
+new_energies = np.zeros(E_STEPS)
+for E_NUM in range(E_STEPS):
+    this_H = Htot[E_NUM,:,:]
+    # print(this_H.shape)
+    new_energies[E_NUM] = selected_state @ this_H @ selected_state
+
+ax.plot(E * 1e-5, new_energies * 1e-6 / scipy.constants.h)
+
+
+ax.set_xlabel("Electric Field (kV/cm)")
+ax.set_ylabel("Energy/h (MHz)")
+ax.set_xlim(0, E_MAX)
+
 # %% [markdown]
 r"""
 # Generalised Units
@@ -308,16 +355,22 @@ $$\implies E'_{\tilde{N},M}(\epsilon) = \tilde{N} (\tilde{N}+1) + \epsilon' f(\t
 
 # %%
 # Generalised Units code
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(3,3))
 
-for i, N, M in state_iter(N_MAX):
-    ax.plot(E * (D_0 / B_0), energies[:, i] / B_0)
+cmaps = ['Purples','Blues','Greens','Oranges','Reds']
+# cmap = cm.get_cmap('jet')
+for i, N, M in state_iter(4):
+    cmap = cm.get_cmap(cmaps[N])
+    col = cmap((M+N+1)/(2*N+2))
+    ax.plot(E * (D_0 / B_0), energies[:, i] / B_0,c=col)
 
 ax.set_xlabel("Electric Field $(B_0/d_0)$")
 ax.set_ylabel("Energy $(B_0)$")
 ax.set_xlim(0, 25)
 ax.set_ylim(-18, 25)
-fig.show()
+fig.savefig('../images/normalised-stark-shift.pdf')
+
+# %%
 
 # %% [markdown]
 r"""
@@ -331,8 +384,18 @@ $$
 # %%
 fig, ax = plt.subplots()
 
+grad_dipole_moments = -np.gradient(energies[:, :], E, axis=0)
+#plt.plot(E * 1e-5, dipole_moments[:,range(9)]/D_0)
+
 for i, N, M in state_iter(2):
+    f = (energies[:, i]-B_0*N*(N+1))/(-E*D_0)
+    fp = np.gradient(f, E)
+    maybe = (E*fp+f)-0.01
     plt.plot(E * 1e-5, -np.gradient(energies[:, i], E) / D_0, color=N_COLOURS[N])
+    plt.plot(E * 1e-5, maybe, color='red')
+
+    for N1,M1,N2,M2 in moments_to_show:
+    plt.plot(E * 1e-5, dipole_moments[:,state_to_pos(N1,M1),state_to_pos(N2,M2)]+0.01,color='black')
 
 ax.set_xlabel("Electric Field (kV/cm)")
 ax.set_ylabel("Dipole Moment ($d_0$)")
@@ -381,7 +444,7 @@ for i, N1, M1 in state_iter(1):
 print(dipole_operator)
 
 # %%
-fig, ax = plt.subplots()
+fig, (ax_l,ax_r) = plt.subplots(1,2,figsize=(6,3.5),sharex=True)
 
 # Form dipole operator matrix
 """
@@ -389,6 +452,7 @@ for P=0, dL = +-1, dM=0
 for P=1, dL = +-1, dM=-1
 for P=-1, dL = +-1, dM=1
 """
+P=0
 dipole_operator = np.zeros((STATE_COUNT,STATE_COUNT))
 
 def dipole_coef(N1,M1,N2,M2,P):
@@ -408,13 +472,41 @@ mask = np.ones(STATE_COUNT,dtype=np.bool_)^np.eye(STATE_COUNT,dtype=np.bool_)
 [np.absolute(dipole_moment, where=mask, out=dipole_moments[e]) for e, dipole_moment in enumerate(dipole_moments)]
 
 moments_to_show = [(0,0,1,0),(0,0,1,1),(0,0,0,0),(1,1,1,1),(1,0,1,0),(0,0,2,0)]
+col = ['red','blue','black','black','black','red']
+i=0
 for N1,M1,N2,M2 in moments_to_show:
-    ax.plot(E * 1e-5, dipole_moments[:,state_to_pos(N1,M1),state_to_pos(N2,M2)])
-ax.set_xlabel("Electric Field (kV/cm)")
-ax.set_ylabel("Dipole Moment ($d_0$)")
-ax.set_xlim(0, E_MAX)
-ax.set_ylim(-1.0, 1.0)
-fig.show()
+    ax.plot(E * (D_0 / B_0), dipole_moments[:,state_to_pos(N1,M1),state_to_pos(N2,M2)],color=col[i])
+    i+=1
+
+def plot_dm(N,M):
+    dm = dipole_moments[:,state_to_pos(N,M),state_to_pos(N,M)]
+    ax_l.plot(E * (D_0 / B_0), dm,color='k')
+    ax_l.text(E_MAX*10e4 * (D_0 / B_0),dm[E_STEPS-1],f'$\langle {N},{M}|d|{N},{M}\\rangle$',ha='right',va='bottom')
+
+plot_dm(0,0)
+plot_dm(1,0)
+plot_dm(1,1)
+
+def plot_tdm(Na,Ma,Nb,Mb,c='k'):
+    tdm = dipole_moments[:,state_to_pos(Na,Ma),state_to_pos(Nb,Mb)]
+    ax_r.plot(E * (D_0 / B_0), tdm,color=c)
+    ax_r.text(E_MAX*10e4*0.7 * (D_0 / B_0),tdm[E_STEPS-1]+0.03,f'$\langle {Na},{Ma}|d|{Nb},{Mb}\\rangle$',ha='left',va='bottom')
+
+plot_tdm(0,0,1,0,'r')
+plot_tdm(0,0,1,1,'b')
+plot_tdm(0,0,2,0,'r')
+    
+ax_l.set_xlabel("Electric Field $(B_0/d_0)$")
+ax_r.set_xlabel("Electric Field $(B_0/d_0)$")
+
+ax_l.set_ylabel("Dipole Moment ($d_0$)")
+ax_r.set_ylabel("Transition Dipole Moment ($d_0$)")
+
+ax_l.set_xlim(0, 25)
+
+ax_l.set_ylim(-0.25, 1.0)
+
+fig.savefig('../images/stark-dipole-moments.pdf')
 
 # %% [markdown]
 """

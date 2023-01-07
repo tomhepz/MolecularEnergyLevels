@@ -44,6 +44,7 @@ plt.rcParams["font.family"] = 'sans-serif'
 plt.rcParams["figure.autolayout"] = True
 plt.rcParams['figure.figsize'] = (4, 3.5)
 plt.rcParams['figure.dpi'] = 200
+plt.rc('text.latex', preamble=r'\usepackage[T1]{fontenc}\usepackage{cmbright}')
 
 # %matplotlib widget
 # %config InlineBackend.figure_format = 'retina'
@@ -59,7 +60,7 @@ H_BAR = scipy.constants.hbar
 I1 = Rb87Cs133["I1"]
 I2 = Rb87Cs133["I2"]
 D_0 = Rb87Cs133["d0"]
-N_MAX=2
+N_MAX=1
 
 I = 0 #W/m^2
 E = 0 #V/m
@@ -67,7 +68,7 @@ E = 0 #V/m
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
 B_MAX = 400 / GAUSS # T
-B_STEPS = 200
+B_STEPS = 400
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -145,18 +146,68 @@ STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,len(CONSIDERED_STATE_POSITIONS)
 """
 
 # %%
-fig, (ax_up, ax_down) = plt.subplots(2,1,sharex=True,figsize=(4,5),dpi=200)
+# Plot Transition Dipole Moments
+dipole_op_pos = calculate.dipole(N_MAX,I1,I2,1,1)
+tdm_matrices_pos = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op_pos @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
 
-ax_up.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=1, alpha=0.35)
-ax_down.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=1, alpha=0.35)
+dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
+tdm_matrices_zero = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op_zero @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
 
-# Highlight available transitions from (0,5,0)
-for i, energy in enumerate(ENERGIES.T):
-    if (LABELS[i] == [0, 5, 0]).all() or (LABELS[i][0] == 1 and LABELS[i][1] in [4, 5, 6]):
-        c=['b','r','g'][int(LABELS[i][1] - 4)]
-        a=0.8
-        ax_up.plot(B*GAUSS, energy*1e-6/scipy.constants.h, color=c, linewidth=1, alpha=a)
-        ax_down.plot(B*GAUSS, energy*1e-6/scipy.constants.h, color=c, linewidth=1, alpha=a)
+dipole_op_neg = calculate.dipole(N_MAX,I1,I2,1,-1)
+tdm_matrices_neg = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op_neg @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
+
+# %%
+gs_kw = dict(width_ratios=[1, 1.5], height_ratios=[1, 1])
+fig, axd = plt.subplot_mosaic([['upper left' ,'right'],
+                               ['lower left' ,'right']],
+                              gridspec_kw=gs_kw, figsize=(6, 4), layout="constrained",sharex=True
+                              )
+ax_up = axd["upper left"]
+ax_down = axd["lower left"]
+ax_dipoles = axd["right"]
+
+ax_up.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1)
+ax_down.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1)
+
+a=0.8
+lwid=1.5
+ax_down.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,5,0)]*1e-6/scipy.constants.h, color='r', linewidth=lwid, alpha=a)
+
+from matplotlib.pyplot import cm
+cmap = cm.get_cmap('Reds')
+for k in range(6):
+    si = label_to_state_no(1,4,k)
+    ci = CONSIDERED_STATE_POSITIONS.index(si)
+    col = cmap(k/12+0.5)
+    ax_up.plot(B*GAUSS, ENERGIES[:,si]*1e-6/scipy.constants.h, color=col, linewidth=lwid, alpha=a)
+    ax_dipoles.plot(B * GAUSS, np.abs(tdm_matrices_pos[:, INITIAL_STATE_POSITION, ci]),color=col, linewidth=lwid, alpha=a)
+
+cmap = cm.get_cmap('Blues')
+for k in range(3):
+    si = label_to_state_no(1,5,k)
+    ci = CONSIDERED_STATE_POSITIONS.index(si)
+    col = cmap(k/6+0.5)
+    ax_up.plot(B*GAUSS, ENERGIES[:,si]*1e-6/scipy.constants.h, color=col, linewidth=lwid, alpha=a)
+    ax_dipoles.plot(B * GAUSS, np.abs(tdm_matrices_zero[:, INITIAL_STATE_POSITION, ci]),color=col, linewidth=lwid, alpha=a)
+    
+cmap = cm.get_cmap('Greens')
+for k in range(1):
+    si = label_to_state_no(1,6,k)
+    ci = CONSIDERED_STATE_POSITIONS.index(si)
+    col = cmap(0.75)
+    ax_up.plot(B*GAUSS, ENERGIES[:,si]*1e-6/scipy.constants.h, color=col, linewidth=lwid, alpha=a)
+    ax_dipoles.plot(B * GAUSS, np.abs(tdm_matrices_neg[:, INITIAL_STATE_POSITION, ci]),color=col, linewidth=lwid, alpha=a)
+
+
+# Plot Transition Dipole Moments
+polarisation=1
+dipole_op = calculate.dipole(N_MAX,I1,I2,1,polarisation)
+tdm_matrices = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
+
+ax_dipoles.set_xlabel("Magnetic Field $B_z$ (G)")
+ax_dipoles.set_ylabel(r"Transition Dipole Moment $(d_0)$")
+ax_dipoles.set_xlim(0, B_MAX*GAUSS)
+ax_dipoles.set_ylim(0, 1)
         
 ax_up.set_xlim(0, B_MAX*GAUSS)
 ax_up.set_ylim(978.8, 981.0)
@@ -175,7 +226,7 @@ kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12, linestyle="none", color=
 ax_up.plot([0, 1], [0, 0], transform=ax_up.transAxes, **kwargs)
 ax_down.plot([0, 1], [1, 1], transform=ax_down.transAxes, **kwargs)
 
-#fig.show()
+fig.savefig('../images/zeeman-energies-tdm.pdf')
 
 # %% [markdown]
 """
@@ -215,7 +266,7 @@ ax.set_title(r"$|N={},M_F={}\rangle_{}$ composition".format(*state_label_to_plot
 
 # %%
 # Set DPI to 600 for print quality
-fig, axs = plt.subplots(5,2, figsize=(8.3,11.7), dpi=80, sharex=True, layout="constrained")
+fig, axs = plt.subplots(5,2, figsize=(6.2,9), sharex=True, layout="constrained")
 
 state_labels_to_plot = np.flip(np.array(ACCESSIBLE_STATE_LABELS, dtype="i,i,i")).reshape(5,2)
 
@@ -225,19 +276,25 @@ for v, axrow in enumerate(axs):
         state_num_to_plot = label_to_state_no(*state_label_to_plot)
 
         state_coeffs_to_plot = np.abs(STATES[:, 32:128, state_num_to_plot].T) ** 2
+        existence = np.sum(state_coeffs_to_plot,1)>0.1
         
         color_map = plt.cm.plasma
         colors = color_map(np.linspace(0.15, 0.9, len(state_coeffs_to_plot)))
         colors_special = color_map(np.linspace(0.8, 1, 3))
         colors[[0,32,64]] = colors_special
+        
+        reduced_state_coeffs_to_plot = state_coeffs_to_plot[existence]
+        reduced_colours = colors[existence]
 
-        ax.stackplot(B*1e4, state_coeffs_to_plot, colors=colors)
+        ax.stackplot(B*1e4, reduced_state_coeffs_to_plot, colors=reduced_colours,lw=0.5,ec='face',aa=True)
         
         max_comp_state_index = state_coeffs_to_plot[:,-1].argmax()+32
         max_comp_state_label = state_no_to_uncoupled_label(max_comp_state_index)
-        max_comp_state_label_string = r'$|N={},M_N={},{},{}\rangle$'.format(*max_comp_state_label)
-        ax.text(B_MAX*0.99*GAUSS, 0.5, max_comp_state_label_string,
-                va='center', ha='right', fontsize='small')
+        max_comp_state_label_string = r'$|{},{},{},{}\rangle$'.format(*max_comp_state_label)
+        bg_col = matplotlib.colors.to_rgb(colors[max_comp_state_index-32])
+        text_col = 'black' if (bg_col[0]*0.299 + bg_col[1]*0.587 + bg_col[2]*0.114) > 0.7 else 'white'
+        ax.text(B_MAX*0.97*GAUSS, 0.5, max_comp_state_label_string,
+                va='center', ha='right', fontsize='small',color=text_col)
         
         if h==1:
             ax.yaxis.tick_right()
@@ -252,7 +309,7 @@ for v, axrow in enumerate(axs):
 
 [ax.set_xlabel("Magnetic Field $B_z$ (G)") for ax in axs[4,:]]
 
-#fig.show()
+fig.savefig('../images/10-state-zeeman.pdf')
 
 # %% [markdown]
 """
@@ -260,7 +317,7 @@ for v, axrow in enumerate(axs):
 """
 
 # %%
-polarisation=-1
+polarisation=1
 dipole_op = calculate.dipole(N_MAX,I1,I2,1,polarisation)
 tdm_matrices = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
 

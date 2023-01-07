@@ -73,6 +73,8 @@ B_STEPS = 350
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
+PULSE_TIME = 100e-6 # s
+
 def btoi(b):
     return (b-B_MIN)/B_STEP_SIZE
 
@@ -95,6 +97,7 @@ H = H0[..., None]+\
 H = H.transpose(2,0,1)
 
 ENERGIES_UNSORTED, STATES_UNSORTED = eigh(H)
+N_STATES = len(ENERGIES_UNSORTED[0])
 
 # %%
 # ENERGIES_HALF_SORTED, STATES_HALF_SORTED = calculate.sort_smooth(ENERGIES_UNSORTED,STATES_UNSORTED)
@@ -102,6 +105,17 @@ ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES_UNSORTED, STATES_UNS
 
 # %%
 MAGNETIC_MOMENTS = calculate.magnetic_moment(STATES, N_MAX, Rb87Cs133)
+
+# %%
+dipole_op_sig = calculate.dipole(N_MAX,I1,I2,1,0)
+dipole_op_pip = calculate.dipole(N_MAX,I1,I2,1,-1)
+dipole_op_pim = calculate.dipole(N_MAX,I1,I2,1,+1)
+
+COUPLINGS_SIG = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_sig @ STATES[:, :, :])
+COUPLINGS_PIP = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_pip @ STATES[:, :, :])
+COUPLINGS_PIM = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_pim @ STATES[:, :, :])
+
+COUPLINGS = [COUPLINGS_SIG,COUPLINGS_PIP,COUPLINGS_PIM]
 
 # %% [markdown]
 """
@@ -270,17 +284,40 @@ fig.text(0.009, 0.5, 'Magnetic Moment $\mu$ $(\mu_N)$', ha='center', va='center'
 
 # %%
 def transfer_efficiency(ai,bi):
-    return 0.9
+    transfered = np.ones(B_STEPS)
+    
+    a_label = state_no_to_uncoupled_label(ai)
+    b_label = state_no_to_uncoupled_label(bi)
+    print(a_label)
+    print(b_label)
+    print('---')
+    #P = b_m - a_m
+    COUPLING = COUPLINGS[0]
+    #print(P)
+    
+    for ci in range(N_STATES):
+        if ci == ai or ci == bi:
+            continue
+        g = np.abs(COUPLING[:, ai, ci]/COUPLING[:, ai, bi])
+        k = np.abs(((ENERGIES[:, ci] - ENERGIES[:, bi]) / scipy.constants.h) / (1/PULSE_TIME))
+        sub_transfered = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+        transfered *= sub_transfered
+        
+    return transfered
 
 
 # %%
 # Simulate microwave transfers to find 'fidelity'
-focus_state = interesting_states[0]
-p=1
+focus_state = interesting_states[5]
+print(focus_state)
+p = np.ones(B_STEPS)
 for i in range(4):
     state_a_pos = label_to_state_no(*focus_state[i%4])
     state_b_pos = label_to_state_no(*focus_state[(i+1)%4])
     p *= transfer_efficiency(state_a_pos,state_b_pos)
+print(p)
 
+
+# %%
 
 # %%
