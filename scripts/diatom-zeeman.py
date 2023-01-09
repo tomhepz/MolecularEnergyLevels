@@ -68,7 +68,7 @@ E = 0 #V/m
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
 B_MAX = 400 / GAUSS # T
-B_STEPS = 400
+B_STEPS = 100
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -266,7 +266,7 @@ ax.set_title(r"$|N={},M_F={}\rangle_{}$ composition".format(*state_label_to_plot
 
 # %%
 # Set DPI to 600 for print quality
-fig, axs = plt.subplots(5,2, figsize=(6.2,9), sharex=True, layout="constrained")
+fig, axs = plt.subplots(5,2, figsize=(6.2,8), sharex=True, layout="constrained")
 
 state_labels_to_plot = np.flip(np.array(ACCESSIBLE_STATE_LABELS, dtype="i,i,i")).reshape(5,2)
 
@@ -438,7 +438,7 @@ DETUNING = 0
 PULSE_TIME = 100e-6 # s
 T_STEPS = 10000
 initial_state_label = (0,5,0)
-intended_state_label = (1,4,5)
+intended_state_label = (1,4,4)
 POLARISATION=initial_state_label[1]-intended_state_label[1]
 
 initial_state_considered_index = CONSIDERED_STATE_LABELS.index(initial_state_label)
@@ -494,7 +494,7 @@ max_vector = (np.abs(state_vectors)**2).max(axis=0) #[bi,i]
 gs_kw = dict(width_ratios=[1, 1, 1], height_ratios=[1, 1])
 fig, axd = plt.subplot_mosaic([['upper left','upper middle' ,'right'],
                                ['lower left','lower middle' ,'right']],
-                              gridspec_kw=gs_kw, figsize=(10, 7), dpi=80, layout="constrained"
+                              gridspec_kw=gs_kw, figsize=(6, 4), layout="constrained"
                               )
 ax_max_trans = axd["upper left"]
 ax_rabi_osc = axd["lower left"]
@@ -571,7 +571,7 @@ ax_down_zeeman.set_xlim(0, B_MAX * GAUSS)
 ax_up_zeeman.set_ylim(UPPER_LIMS)
 ax_down_zeeman.set_ylim(LOWER_LIMS)
 ax_up_zeeman.set_ylabel(" ")
-fig.text(0.35, 0.5, 'Energy/$h$ (MHz)', ha='left',va='center', rotation='vertical')
+fig.text(0.33, 0.5, 'Energy/$h$ (MHz)', ha='left',va='center', rotation='vertical')
 ax_down_zeeman.set_xlabel("Magnetic Field $B_z$ (G)")
 ax_up_zeeman.yaxis.set_major_locator(plt.MultipleLocator(0.5))
 ax_up_zeeman.yaxis.set_minor_locator(plt.MultipleLocator(0.25))
@@ -607,6 +607,10 @@ ax_detuning.set_ylabel("Detuning $(\Omega)$")
 #anim = controls.save_animation("bsliding{}-{}-{}.mp4".format(*intended_state_label), fig, "bi", interval=100)
 
 #fig.show()
+fig.savefig('../images/bad-numeric.pdf')
+
+# %%
+fig.savefig('../images/bad-numeric.pdf')
 
 # %% [markdown] tags=[]
 """
@@ -614,8 +618,9 @@ ax_detuning.set_ylabel("Detuning $(\Omega)$")
 """
 
 # %%
-fig,(ax,axr) = plt.subplots(1,2)
+fig,(ax,axr) = plt.subplots(1,2,figsize=(6,2.8))
 i=0
+averages = []
 for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
     sub_index += 1
     absg=np.abs(couplings[:, initial_state_considered_index, sub_index])
@@ -628,12 +633,18 @@ for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
     average = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
     if sub_index == intended_state_considered_index:
         continue
+    averages.append(average)
     axr.plot(B * GAUSS, -np.log10(1-average+1e-8), color=this_colour, alpha=1, linewidth=1)
+    
+averages = np.array(averages)
+minimum_transfer = np.prod(averages,0)
+axr.plot(B * GAUSS, -np.log10(1-minimum_transfer+1e-8), color='black', alpha=1, linewidth=1, linestyle='dashed')
     
 #axr.set_ylim(0,1.1)
 #ax2 = axr.twinx()
 axr.set_ylim(0,8)
 axr.set_ylabel("Transition Fidelity $(-\log_{10}(1-T))$")
+axr.set_xlabel("Magnetic Field $B_z$ (G)")
 #ax2.set_yticks(np.linspace(0,8,9),100*(1-np.logspace(0,-8,9)))
 
 ax.set_xlim(0, B_MAX * GAUSS)
@@ -641,7 +652,97 @@ axr.set_xlim(0, B_MAX * GAUSS)
 ax.set_xlabel("Magnetic Field $B_z$ (G)")
 ax.set_ylabel("Detuning $(\Omega)$")
 
+fig.savefig('../images/bad-transfer-fidelities.pdf')
+
+# %% [markdown]
+"""
+# 2-parameter ANALYTIC
+"""
+
 # %%
+max_prob_vector = phase_fidelity(intended_state_label,T_STEPS=10000)
+
+# %%
+fig,(axl,axr) = plt.subplots(1,2,figsize=(6,2.5))
+i=0
+
+PULSE_MIN = 10e-6
+PULSE_MAX = 1e-3
+PULSE_NUM = 40
+PULSE_TIMES = np.linspace(PULSE_MIN,PULSE_MAX,num=PULSE_NUM)
+
+P_GRID,B_GRID=np.meshgrid(PULSE_TIMES,B)
+
+averages = np.ones((B_STEPS,PULSE_NUM))
+# print(averages.shape)
+for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
+    sub_index += 1
+    absg=np.abs(couplings[:, initial_state_considered_index, sub_index])
+    g = np.abs(couplings[:, initial_state_considered_index, sub_index]/couplings[:, initial_state_considered_index, intended_state_considered_index])
+    # print(g.shape)
+    # this_colour = STATE_CMAP[sub_index]
+    # Detuning plot levels
+    k = np.abs(((ENERGIES[:, real_index,None] - ENERGIES[:, intended_state_real_index,None]) / scipy.constants.h) / (1/PULSE_TIMES[None,:]))
+    # print(k.shape)
+    # ax.plot(B * GAUSS, k, color='k', alpha=0.2, linewidth=0.5, zorder=3)
+    # ax.scatter(B * GAUSS, k, color=this_colour, edgecolors=None, alpha=absg, s=absg ** 1.8 * 1000, zorder=2)
+    if sub_index == intended_state_considered_index:
+        continue
+    this_contribution = ((1 + g[:,None]**2)**2 + 8*(-1 + 2*g[:,None]**2)*k**2 + 16*k**4) / ((1 + g[:,None]**2)**3 + (-8 + 20*g[:,None]**2 + g[:,None]**4)*k**2 + 16*k**4)
+    averages *= this_contribution
+    
+    
+CLIP=0.0005
+def _forward(x):
+    return np.log(1-x+CLIP)/np.log(CLIP)
+def _inverse(x):
+    return 1+CLIP-CLIP^x
+
+levels = 1-np.logspace(0,-7,50)
+levels=np.append(levels,1.0)
+norm = matplotlib.colors.FuncNorm((_forward, _inverse), vmin=0, vmax=1, clip=True)
+
+noted_levels=[0.9,0.99,0.999,0.9999]
+cf = axr.contourf(B_GRID*GAUSS,P_GRID*1e6,averages, levels, cmap='plasma', norm=norm)
+CS1 = axr.contour(B_GRID*GAUSS,P_GRID*1e6,averages,noted_levels,
+                 colors='w',linestyles='dashed',linewidths=1,alpha=0.8)
+
+fmt = {}
+strs = ["90%","99%","99.9%","99.99%"]
+for l, s in zip(CS1.levels, strs):
+    fmt[l] = s
+
+axr.clabel(CS1, CS1.levels, inline=True, fmt=fmt, fontsize=5)
+axr.set_xlim(0,B_MAX*GAUSS)
+axr.set_yscale('log')
+axr.set_xlabel("Magnetic Field $B_z$ (G)")
+axr.set_ylabel("Rabi Period ($\mu$s)")
+axr.set_title("Analytic Maximum Transfer $|c_i|^2$")
+
+
+#### NUMERIC
+# max_prob_vector = phase_fidelity(intended_state_label,T_STEPS=5000)
+b_grid, p_grid = np.meshgrid(B,PULSE_TIMES)
+
+cf = axl.contourf(b_grid*GAUSS,p_grid*1e6,max_prob_vector[:,:,intended_state_considered_index], levels, cmap='plasma', norm=norm)
+CS1 = axl.contour(b_grid*GAUSS,p_grid*1e6,max_prob_vector[:,:,intended_state_considered_index],noted_levels,
+                 colors='w',linestyles='dashed',linewidths=1,alpha=0.8)
+
+fmt = {}
+strs = ["90%","99%","99.9%","99.99%"]
+for l, s in zip(CS1.levels, strs):
+    fmt[l] = s
+
+axl.clabel(CS1, CS1.levels, inline=True, fmt=fmt, fontsize=5)
+
+axl.set_xlim(0,B_MAX*GAUSS)
+axl.set_yscale('log')
+#ax.set_xlabel("Rabi Frequency $\Omega$ (Hz)")
+axl.set_xlabel("Magnetic Field $B_z$ (G)")
+axl.set_ylabel("Rabi Period ($\mu$s)")
+axl.set_title("Numeric Maximum Transfer $|c_i|^2$")
+
+fig.savefig('../images/bad-transfer-fidelities-phase.pdf')
 
 # %% [markdown]
 """
@@ -716,11 +817,11 @@ def phase_fidelity(intended_state_label,T_STEPS=10000):
 
 # %%
 # Set to higher T_STEPS=25000 for example
-max_prob_vectors = [phase_fidelity(intended, T_STEPS=10) for intended in ACCESSIBLE_STATE_LABELS]
+max_prob_vectors = [phase_fidelity(intended, T_STEPS=1000) for intended in ACCESSIBLE_STATE_LABELS]
 
 # %%
 # Set DPI to 600 for print quality
-fig, axs = plt.subplots(5,2, figsize=(8.3,11.7), dpi=50, sharex=True, layout="constrained")
+fig, axs = plt.subplots(5,2, figsize=(6,6), dpi=50, sharex=True, layout="constrained")
 
 state_labels_to_plot = np.flip(np.array(ACCESSIBLE_STATE_LABELS, dtype="i,i,i")).reshape(5,2)
 
