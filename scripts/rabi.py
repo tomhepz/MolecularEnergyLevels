@@ -150,79 +150,229 @@ plt.rc('text.latex', preamble=r'\usepackage[T1]{fontenc}\usepackage{cmbright}')
 # Physical Constants
 H_BAR = scipy.constants.hbar
 
-# %% [markdown]
+# %% [markdown] tags=[]
 """
-# 2-level state variation
-"""
-
-# %%
-fig,ax = plt.subplots()
-
-omega = 1 # Rabi Frequency = E_0/hbar <e|d.e|g>
-
-T_MIN = 0
-T_MAX = np.pi*4
-T_STEPS = 100
-times = np.linspace(T_MIN,T_MAX,T_STEPS)
-
-for detuning_ratio in [0,1,2]: # \Delta = w-w_0
-    detuning = detuning_ratio * omega
-    
-    ham = H_BAR/2 * np.array([[0, omega],[omega, -2*detuning]])
-
-    initial = np.array([1,0])
-
-    unitaries = np.array([scipy.linalg.expm(-(1j)*t*ham/H_BAR) for t in times])
-    finals = np.matmul(unitaries,initial)
-
-    ax.plot(times*omega,np.abs(finals[:,1])**2, label=f"$\Delta={detuning_ratio}\Omega$")
-
-ax.set_xlim(0,T_MAX*omega)
-ax.set_ylim(0,1)
-ax.set_xlabel("$\Omega t$ (rad)")
-ax.set_ylabel("$|c_e|^2$")
-ax.xaxis.set_major_formatter(FuncFormatter(lambda val,pos: '{:.0g}$\pi$'.format(val/np.pi) if val !=0 else '0'))
-ax.xaxis.set_major_locator(MultipleLocator(base=np.pi))
-ax.legend()
-fig.show()
-
-
-# %% [markdown]
-"""
-# 2-level detuning dependence
+# Analytic 2-level
 """
 
 # %%
-fig,ax = plt.subplots()
+fig, (ax_l,ax_r) = plt.subplots(1,2,figsize=(6,2.5))
 
-omega = 6 # Rabi Frequency = E_0/hbar <e|d.e|g>
+t = np.linspace(0,4*np.pi,200)
 
-D_MIN = -6
-D_MAX = +6
-D_STEPS = 100
-detunings = np.linspace(D_MIN*omega,D_MAX*omega,D_STEPS)
-
-transferred = []
-for detuning in detunings: # \Delta = w-w_0
+ax_l.plot(t,1/(1+0**2)*np.sin(np.sqrt(1+0**2)*t*0.5)**2,'g',alpha=0.8)
+ax_l.plot(t,1/(1+1**2)*np.sin(np.sqrt(1+1**2)*t*0.5)**2,'b--',alpha=0.7)
+ax_l.plot(t,1/(1+2**2)*np.sin(np.sqrt(1+2**2)*t*0.5)**2,'r:',alpha=0.6)
     
-    ham = H_BAR/2 * np.array([[0, omega],[omega, -2*detuning]])
-    initial = np.array([1,0])
-    t=np.pi/omega
-    unitary = scipy.linalg.expm(-(1j)*t*ham/H_BAR)
-    final = np.matmul(unitary,initial)
-    transferred.append(np.abs(final[1])**2)
+ax_l.set_xlim(0,4*np.pi)
+ax_l.set_ylim(0,1)
+ax_l.xaxis.set_major_formatter(FuncFormatter(
+   lambda val,pos: '{:.0g}$\pi$'.format(val/np.pi) if val !=0 else '0'
+))
+ax_l.xaxis.set_major_locator(MultipleLocator(base=np.pi))
+ax_l.set_xlabel(r'$\tau$')
+ax_l.set_ylabel(r'$\pi_2$')
 
-ax.plot(detunings/omega, transferred)
 
-ax.set_xlim(D_MIN,D_MAX)
-ax.set_ylim(0,1)
-ax.set_xlabel("$\Delta (\Omega)$")
-ax.set_ylabel("$|c_e|^2$")
-fig.show()
+k = np.linspace(-10,10,200)
+
+
+ax_r.plot(k,1/(1+k**2)*np.sin(np.sqrt(1+k**2)*np.pi*0.5)**2,'blue')
+ax_r.plot(k,1/(1+k**2),color='grey', linestyle='dotted')
+    
+ax_r.set_xlim(-10,10)
+ax_r.set_ylim(0,1)
+
+ax_r.set_xlabel(r'$\kappa$')
+ax_r.set_ylabel(r'$\pi_2$')
+
+# fig.savefig('../images/2-level-rabi.pdf')
+
+
+# %% [markdown]
+"""
+# Analytic 3-State
+"""
+
+# %%
+example_points = [(1,0.2,3),(0.1,1,3),(1,4,3),(0.5,0.2,10)]
+
+# %%
+fig, axs = plt.subplots(2,2,figsize=(6,4.5))
+
+for i,(k,g,p) in enumerate(example_points):
+    coeff = [1, 2*k, -(1+g**2),-2*k]
+    roots = np.roots(coeff)
+    a=roots[0]
+    b=roots[1]
+    c=roots[2]
+
+    normalisation = 1/((a-b)*(c-a)*(b-c))**2
+
+    coefficients = np.array([
+        [a*(b - c)*(2*k+a),b*(c - a)*(2*k+b),c*(a - b)*(2*k+c)],
+        [(b - c)*(2*k+a),(c - a)*(2*k+b),(a - b)*(2*k+c)],
+        [g*a*(b - c),g*b*(c - a),g*c*(a - b)]
+    ])
+
+    averages = np.sum(coefficients**2,1)
+
+    beatAmplitudes=2*np.array([
+        [coefficients[0,0]*coefficients[0,1],coefficients[0,2]*coefficients[0,0],coefficients[0,1]*coefficients[0,2]],
+        [coefficients[1,0]*coefficients[1,1],coefficients[1,2]*coefficients[1,0],coefficients[1,1]*coefficients[1,2]],
+        [coefficients[2,0]*coefficients[2,1],coefficients[2,2]*coefficients[2,0],coefficients[2,1]*coefficients[2,2]]
+    ])
+
+    beatFrequencies = np.array([a-b,c-a,b-c])/2
+
+    MAX_T = 2*np.pi*p
+    t=np.linspace(0,MAX_T,1000)
+    coses = np.cos(t[:,None] * beatFrequencies[None,:])
+
+    prob = normalisation * np.array([
+        averages[0]+beatAmplitudes[0,0]*coses[:,0]+beatAmplitudes[0,1]*coses[:,1]+beatAmplitudes[0,2]*coses[:,2],
+        averages[1]+beatAmplitudes[1,0]*coses[:,0]+beatAmplitudes[1,1]*coses[:,1]+beatAmplitudes[1,2]*coses[:,2],
+        averages[2]+beatAmplitudes[2,0]*coses[:,0]+beatAmplitudes[2,1]*coses[:,1]+beatAmplitudes[2,2]*coses[:,2]
+    ])
+
+    ax=axs.flatten()[i]
+
+    line_width=1.5
+    ax.plot(t/np.pi,prob[0],c='blue',lw=line_width,alpha=0.5)
+    ax.plot(t/np.pi,prob[2],c='red',lw=line_width,alpha=0.8)
+    ax.plot(t/np.pi,prob[1],c='green',lw=line_width,alpha=0.8)
+
+    ax.set_xlim(0,MAX_T/np.pi)
+    ax.xaxis.get_major_locator().set_params(integer=True)
+    ax.set_ylim(0,1)
+    ax.set_title(f'$\kappa={k},\Gamma={g}$')
+
+    ax.set_xlabel(r'$\tau (\pi)$')
+    ax.set_ylabel(r'$\pi_i$')
+
+
+# fig.savefig('../images/4-panel-3-state-evolution.pdf')
+
+# %%
+fig, ax = plt.subplots(figsize=(6,3.5))
+
+def peak_analytic(k,g):
+    return ((1 + g**2)**2 + 8*k**2*(-1 + 2*g**2) + 16*k**4)/((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+
+k_exp_range = (-3,3)
+g_exp_range = (-3,3)
+
+ks = np.logspace(*k_exp_range,1000)
+gs = np.logspace(*g_exp_range,1000)
+
+ks, gs = np.meshgrid(ks,gs)
+
+fidelities = peak_analytic(ks,gs)
+
+from matplotlib import colors
+Norm  = colors.Normalize(vmin=0, vmax=1)
+
+
+ax.set_xscale('log')
+ax.set_yscale('log')
+noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+k=6
+normalised_fidelity = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
+cf = ax.contourf(ks,gs,normalised_fidelity,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
+cf = ax.contourf(ks,gs,normalised_fidelity,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
+CS1 = ax.contour(ks,gs,fidelities,noted_levels,
+                         colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
+
+fmt = {}
+strs = [f"{n*100:.3f}\%" for n in noted_levels]
+for l, s in zip(CS1.levels, strs):
+    fmt[l] = s
+
+labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
+ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions)
+
+if example_points is not None:
+    for k,g,_ in example_points:
+        ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
+
+
+ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
+ax.set_xlabel('$\kappa$')
+ax.set_ylabel('$\Gamma$')
+
+# fig.savefig('../images/3-level-phase.pdf')
+
+# %%
+fig, ax = plt.subplots(figsize=(6,3.5))
+
+def peak_manual(k,g):
+    coeff = [1, 2*k, -(1+g**2),-2*k]
+    roots = np.roots(coeff)
+    a=roots[0]
+    b=roots[1]
+    c=roots[2]
+
+    normalisation = 1/((a-b)*(c-a)*(b-c))**2
+
+    coefficients = np.array([
+        (b - c)*(2*k+a),(c - a)*(2*k+b),(a - b)*(2*k+c)
+    ])
+
+    average = np.sum(coefficients**2,0)
+
+    beat_amplitudes = np.abs(np.array([2*coefficients[0]*coefficients[1],2*coefficients[2]*coefficients[0],2*coefficients[1]*coefficients[2]]))
+    peak_value = normalisation*(average+np.sum(beat_amplitudes))
+    return peak_value
+
+
+k_exp_range = (-3,3)
+g_exp_range = (-3,3)
+
+ks = np.logspace(*k_exp_range,100)
+gs = np.logspace(*g_exp_range,100)
+
+ks, gs = np.meshgrid(ks,gs)
+
+fidelities = np.vectorize(peak_manual)(ks,gs)
+
+from matplotlib import colors
+Norm  = colors.Normalize(vmin=0, vmax=1)
+
+
+ax.set_xscale('log')
+ax.set_yscale('log')
+noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+k=6
+normalised_fidelity = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
+cf = ax.contourf(ks,gs,normalised_fidelity,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
+cf = ax.contourf(ks,gs,normalised_fidelity,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
+CS1 = ax.contour(ks,gs,fidelities,noted_levels,
+                         colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
+
+fmt = {}
+strs = [f"{n*100:.3f}\%" for n in noted_levels]
+for l, s in zip(CS1.levels, strs):
+    fmt[l] = s
+
+labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
+ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions)
+
+if example_points is not None:
+    for k,g,_ in example_points:
+        ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
+
+
+ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
+ax.set_xlabel('$\kappa$')
+ax.set_ylabel('$\Gamma$')
+
+# fig.savefig('../images/3-level-phase.pdf')
 
 # %% [markdown]
 r"""
-# Exact time evolution of two-level
+# Exact Numeric 2-level
 
 Taking the general exact matrix equation
 $$
@@ -269,16 +419,16 @@ $$
 fig, ax = plt.subplots()
 
 
-driving = 1
-angular = [0, 1]
+driving = 2
+angular = [0, driving]
 
 # Construct coupling matrix
-coupling = np.matrix([[0, 0.3],
-                      [0.3, 0]], dtype=np.cdouble)
+coupling = np.matrix([[0, 1],
+                      [1, 0]], dtype=np.cdouble)
 
 # Construct
-T_MAX = 40
-T_STEPS = 1000
+T_MAX = 50
+T_STEPS = 5000
 times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
 
 Ts = []
@@ -312,9 +462,84 @@ ax.set_ylabel("$|c_e|^2$")
 
 ax.plot(times, finals)
 
-# %% [markdown]
+# %% [markdown] tags=[]
 """
-# 5-level system
+# Exact Numeric n-level system
+
+```
+---- 1e13 + 1e7
+---- 1e13
+ ^
+ |
+ |
+ |
+---- 0
+```
+"""
+
+# %%
+fig, ax = plt.subplots()
+
+INITIAL_STATE = 0
+DETUNING = 0.45
+FIRST = 1e1
+angular = [0, FIRST, FIRST+DETUNING]
+N_STATES = len(angular)
+
+# Construct coupling matrix
+global_coupling = 1e0
+coupling = global_coupling*np.array([
+        [0,1,0.05],
+        [1,0,0],
+        [0.05,0,0]
+        ])
+
+driving = angular[1]-angular[0]
+
+# Construct
+T_MAX = 40*np.pi / global_coupling
+T_STEPS = 111317 
+times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
+print("time_step:", DT, "Driving Period: ",2*np.pi/driving, "ratio (hope<1):", DT*driving/(2*np.pi))
+
+Ts = []
+for t in times:
+    T  = np.zeros((N_STATES,N_STATES), dtype=np.cdouble)
+    for i in range(N_STATES):
+        for j in range(N_STATES):
+            T[i,j] = np.exp((1j)*(angular[i]-angular[j]-driving)*t) + np.exp((1j)*(angular[i]-angular[j]+driving)*t)
+    Ts.append(T)
+Ts = np.array(Ts)
+
+# Construct Hamiltonians
+H = np.array([H_BAR/2 * np.multiply(coupling, T) for T in Ts])
+
+
+# Move State
+
+finals = []
+
+state = np.zeros(N_STATES) # initial state
+state[INITIAL_STATE] = 1
+
+
+for i in range(T_STEPS):
+    unitary = scipy.linalg.expm(-(1j)*(DT/H_BAR)*H[i])
+    state = np.matmul(unitary,state)
+    finals.append(np.abs(state)**2)
+
+    
+ax.set_xlim(0,T_MAX)
+ax.set_ylim(0,1.1)
+ax.set_xlabel("t (s)")
+ax.set_ylabel("$|c_e|^2$")
+
+ax.plot(times, finals);
+# fig.show()
+
+# %% [markdown] tags=[]
+"""
+# n-level system
 
 ```
 ---- 1e13 + 1e9 + 1e7
@@ -382,8 +607,8 @@ ax.set_ylim(0,1.1)
 ax.set_xlabel("t (s)")
 ax.set_ylabel("$|c_e|^2$")
 
-ax.plot(times, finals)
-fig.show()
+ax.plot(times, finals);
+# fig.show()
 
 # %% [markdown]
 """
@@ -499,164 +724,5 @@ ax.set_xlabel("Rabi Frequency $\Omega$ (Hz)")
 ax.set_ylim(D_MIN/(2*np.pi),D_MAX/(2*np.pi))
 ax.set_ylabel("Detuning (Hz)")
 ax.set_title("Maximum Transfer $|c_i|^2$")
-
-# %%
-fig, ax = plt.subplots(figsize=(6,3.5))
-
-def peak(k,g):
-    return ((1 + g**2)**2 + 8*k**2*(-1 + 2*g**2) + 16*k**4)/((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
-
-k_exp_range = (-3,3)
-g_exp_range = (-3,3)
-
-ks = np.logspace(*k_exp_range,1000)
-gs = np.logspace(*g_exp_range,1000)
-
-ks, gs = np.meshgrid(ks,gs)
-
-fidelities = peak(ks,gs)
-
-from matplotlib import colors
-Norm  = colors.Normalize(vmin=0, vmax=1)
-
-
-ax.set_xscale('log')
-ax.set_yscale('log')
-noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
-k=6
-normalised_fidelity = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
-cf = ax.contourf(ks,gs,normalised_fidelity,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
-cf = ax.contourf(ks,gs,normalised_fidelity,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
-CS1 = ax.contour(ks,gs,fidelities,noted_levels,
-                         colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
-
-fmt = {}
-strs = [f"{n*100:.3f}\%" for n in noted_levels]
-for l, s in zip(CS1.levels, strs):
-    fmt[l] = s
-
-labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
-ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions)
-
-if example_points is not None:
-    for k,g,_ in example_points:
-        print('test')
-        ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
-
-
-ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
-ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
-ax.set_xlabel('$\kappa$')
-ax.set_ylabel('$\Gamma$')
-
-fig.savefig('../images/3-level-phase.pdf')
-
-# %% [markdown] tags=[]
-"""
-# Analytic Rabi
-"""
-
-# %%
-fig, (ax_l,ax_r) = plt.subplots(1,2,figsize=(6,2.5))
-
-t = np.linspace(0,4*np.pi,200)
-
-ax_l.plot(t,1/(1+0**2)*np.sin(np.sqrt(1+0**2)*t*0.5)**2,'g',alpha=0.8)
-ax_l.plot(t,1/(1+1**2)*np.sin(np.sqrt(1+1**2)*t*0.5)**2,'b--',alpha=0.7)
-ax_l.plot(t,1/(1+2**2)*np.sin(np.sqrt(1+2**2)*t*0.5)**2,'r:',alpha=0.6)
-    
-ax_l.set_xlim(0,4*np.pi)
-ax_l.set_ylim(0,1)
-ax_l.xaxis.set_major_formatter(FuncFormatter(
-   lambda val,pos: '{:.0g}$\pi$'.format(val/np.pi) if val !=0 else '0'
-))
-ax_l.xaxis.set_major_locator(MultipleLocator(base=np.pi))
-ax_l.set_xlabel(r'$\tau$')
-ax_l.set_ylabel(r'$\pi_2$')
-
-
-k = np.linspace(-10,10,200)
-
-
-ax_r.plot(k,1/(1+k**2)*np.sin(np.sqrt(1+k**2)*np.pi*0.5)**2,'blue')
-ax_r.plot(k,1/(1+k**2),color='grey', linestyle='dotted')
-    
-ax_r.set_xlim(-10,10)
-ax_r.set_ylim(0,1)
-
-ax_r.set_xlabel(r'$\kappa$')
-ax_r.set_ylabel(r'$\pi_2$')
-
-fig.savefig('../images/2-level-rabi.pdf')
-
-
-# %% [markdown]
-"""
-# 3-State
-"""
-
-# %%
-fig, axs = plt.subplots(2,2,figsize=(6,4.5))
-
-example_points = [(1,0.2,3),(0.1,1,3),(1,4,3),(0.5,0.2,10)]
-
-for i,(k,g,p) in enumerate(example_points):
-    coeff = [1, 2*k, -(1+g**2),-2*k]
-    roots = np.roots(coeff)
-    print(roots)
-    a=roots[0]
-    b=roots[1]
-    c=roots[2]
-
-    normalisation = 1/((a-b)*(c-a)*(b-c))**2
-
-    coefficients = np.array([
-        [a*(b - c)*(2*k+a),b*(c - a)*(2*k+b),c*(a - b)*(2*k+c)],
-        [(b - c)*(2*k+a),(c - a)*(2*k+b),(a - b)*(2*k+c)],
-        [g*a*(b - c),g*b*(c - a),g*c*(a - b)]
-    ])
-
-    averages = np.sum(coefficients**2,1)
-
-    beatAmplitudes=2*np.array([
-        [coefficients[0,0]*coefficients[0,1],coefficients[0,2]*coefficients[0,0],coefficients[0,1]*coefficients[0,2]],
-        [coefficients[1,0]*coefficients[1,1],coefficients[1,2]*coefficients[1,0],coefficients[1,1]*coefficients[1,2]],
-        [coefficients[2,0]*coefficients[2,1],coefficients[2,2]*coefficients[2,0],coefficients[2,1]*coefficients[2,2]]
-    ])
-    print(beatAmplitudes)
-
-    beatFrequencies = np.array([a-b,c-a,b-c])/2
-    print(beatFrequencies)
-
-    PERIODS=p
-    MAX_T = 2*np.pi*PERIODS
-    t=np.linspace(0,MAX_T,1000)
-    coses = np.cos(t[:,None] * beatFrequencies[None,:])
-
-    prob = normalisation * np.array([
-        averages[0]+beatAmplitudes[0,0]*coses[:,0]+beatAmplitudes[0,1]*coses[:,1]+beatAmplitudes[0,2]*coses[:,2],
-        averages[1]+beatAmplitudes[1,0]*coses[:,0]+beatAmplitudes[1,1]*coses[:,1]+beatAmplitudes[1,2]*coses[:,2],
-        averages[2]+beatAmplitudes[2,0]*coses[:,0]+beatAmplitudes[2,1]*coses[:,1]+beatAmplitudes[2,2]*coses[:,2]
-    ])
-
-    ax=axs.flatten()[i]
-
-    line_width=1.5
-    ax.plot(t/np.pi,prob[0],c='blue',lw=line_width,alpha=0.5)
-    ax.plot(t/np.pi,prob[2],c='red',lw=line_width,alpha=0.8)
-    ax.plot(t/np.pi,prob[1],c='green',lw=line_width,alpha=0.8)
-
-    ax.set_xlim(0,MAX_T/np.pi)
-    ax.xaxis.get_major_locator().set_params(integer=True)
-    ax.set_ylim(0,1)
-    ax.set_title(f'$\kappa={k},\Gamma={g}$')
-
-    ax.set_xlabel(r'$\tau (\pi)$')
-    ax.set_ylabel(r'$\pi_i$')
-
-
-fig.savefig('../images/4-panel-3-state-evolution.pdf')
-
-# %%
 
 # %%

@@ -107,15 +107,15 @@ ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES_UNSORTED, STATES_UNS
 MAGNETIC_MOMENTS = calculate.magnetic_moment(STATES, N_MAX, Rb87Cs133)
 
 # %%
-dipole_op_sig = calculate.dipole(N_MAX,I1,I2,1,0)
-dipole_op_pip = calculate.dipole(N_MAX,I1,I2,1,-1)
-dipole_op_pim = calculate.dipole(N_MAX,I1,I2,1,+1)
+dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
+dipole_op_minus = calculate.dipole(N_MAX,I1,I2,1,-1)
+dipole_op_plus = calculate.dipole(N_MAX,I1,I2,1,+1)
 
-COUPLINGS_SIG = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_sig @ STATES[:, :, :])
-COUPLINGS_PIP = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_pip @ STATES[:, :, :])
-COUPLINGS_PIM = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_pim @ STATES[:, :, :])
+COUPLINGS_ZERO = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_zero @ STATES[:, :, :])
+COUPLINGS_MINUS = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_minus @ STATES[:, :, :])
+COUPLINGS_PLUS = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_plus @ STATES[:, :, :])
 
-COUPLINGS = [COUPLINGS_SIG,COUPLINGS_PIP,COUPLINGS_PIM]
+COUPLINGS = [COUPLINGS_ZERO,COUPLINGS_PLUS,COUPLINGS_MINUS]
 
 # %% [markdown]
 """
@@ -142,6 +142,71 @@ def state_no_to_uncoupled_label(state_no):
                     i+=1
     
 print(label_to_state_no(*(2, 4, 13)))
+
+
+# %%
+def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
+    state1i = label_to_state_no(*state1_label)
+    state2i = label_to_state_no(*state2_label)
+    state3i = label_to_state_no(*state3_label)
+    
+    P = state1_label[1] - state2_label[1]
+    COUPLING = COUPLINGS[P]
+    
+    g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
+    k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
+    sub_transfered = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+    
+    return sub_transfered
+
+
+# %%
+def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
+    transfered = 1
+    
+    state1i = label_to_state_no(*state1_label)
+    state2i = label_to_state_no(*state2_label)
+
+    P = (state1_label[1] - state2_label[1])*(state2_label[0] - state1_label[0])
+    COUPLING = COUPLINGS[P]
+    
+    for state3i in range(N_STATES):
+        if state3i == state1i or state3i == state2i:
+            continue
+        g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
+        k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
+        sub_transfered = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+        transfered *= sub_transfered
+        
+    return transfered
+
+
+# %%
+print(transfer_efficiency((0,5,0),(1,4,1),int(B_STEPS/2)))
+print(transfer_efficiency((1,4,1),(0,5,0),int(B_STEPS/2)))
+print('----')
+print(transfer_efficiency((0,5,0),(1,5,1),int(B_STEPS/2)))
+print(transfer_efficiency((1,5,1),(0,5,0),int(B_STEPS/2)))
+print('----')
+print(transfer_efficiency((0,5,0),(1,6,0),int(B_STEPS/2)))
+print(transfer_efficiency((1,6,0),(0,5,0),int(B_STEPS/2)))
+print('---------')
+print(transfer_efficiency((0,4,1),(1,3,1),int(B_STEPS/2)))
+print(transfer_efficiency((1,3,1),(2,2,0),int(B_STEPS/2)))
+print(transfer_efficiency((2,2,0),(1,3,0),int(B_STEPS/2)))
+print(transfer_efficiency((1,3,0),(0,4,1),int(B_STEPS/2)))
+print(transfer_efficiency((0,4,1),(1,3,0),int(B_STEPS/2)))
+
+# %%
+print(transfer_efficiency((0,5,0),(1,6,0),int(B_STEPS-1)))
+
+eff = []
+for bi in range(B_STEPS):
+    eff.append(transfer_efficiency((0,5,0),(1,5,2),bi))
+eff=np.array(eff)
+fig,ax=plt.subplots()
+ax.set_ylim(0,1.1)
+ax.plot(B*GAUSS,eff)
 
 # %% [markdown]
 """
@@ -232,92 +297,104 @@ for state_mf in state_mfs:
                         continue
                     states.append([(0,state_mf[0],i),(1,state_mf[1],j),(2,state_mf[2],k),(1,state_mf[3],l)])
                     
+states=np.array(states)
+                    
 print(len(states), "states to consider")
 
 # %%
-ranking = []
-where = []
-for state_posibility in states:
-    #Want to minimise sum of differences^2
-    diff_total=np.zeros(B_STEPS,dtype=np.double)
+# Find best B for minimum dipole deviation
+best_deviation = np.ones((len(states)),dtype=np.double)
+best_b_index = np.ones((len(states)),dtype=int)
+for i,state_posibility in enumerate(states):
+    desired_indices = np.array([
+        label_to_state_no(*state_posibility[0]),
+        label_to_state_no(*state_posibility[1]),
+        label_to_state_no(*state_posibility[2]),
+        label_to_state_no(*state_posibility[3])
+    ])
+    if desired_indices.all() != None:
+        all_moments = MAGNETIC_MOMENTS[:,desired_indices]
+        max_moment = np.amax(all_moments,axis=1)
+        min_moment = np.amin(all_moments,axis=1)
+        deviation = max_moment - min_moment
+        
+    min_diff_loc = np.argmin(deviation)
+    min_diff = deviation[min_diff_loc]
 
-    for state_a, state_b in itertools.combinations(state_posibility,2):
-        state_a_num=label_to_state_no(*state_a)
-        state_b_num=label_to_state_no(*state_b)
-        if state_a_num==None or state_b_num==None:
-            #print(state_a,"or",state_b, "could not be found in basis")
-            diff_total += 20*np.ones((B_STEPS))
-        else:
-            diff = np.abs(MAGNETIC_MOMENTS[:,state_a_num]-MAGNETIC_MOMENTS[:,state_b_num])**2
-            diff_total += diff
-        #xs = (B[sign_flip_low_indices] + B[sign_flip_low_indices+1])*GAUSS/2
-        #ys = (moment_a[sign_flip_low_indices]+moment_a[sign_flip_low_indices+1])/(2*muN)
-        # ax.scatter(xs, ys,color='k',s=0.4,zorder=1)
-    min_diff_loc = np.argmin(diff_total, axis=0)
-    min_diff = diff_total[min_diff_loc]
-    
-    where.append(min_diff_loc)
-    ranking.append(min_diff)
+    best_deviation[i] = np.abs(min_diff)
+    best_b_index[i] = min_diff_loc
 
-ranking=np.array(ranking)
-order = ranking.argsort()
+# order = best_deviation.argsort()
 
-where_interesting = np.array(where)[order]
-interesting_states = np.array(states)[order]
+# where_interesting = np.array(where)[order]
+# interesting_states = np.array(states)[order]
+# interesting_deviation = np.array(ranking)[order]
 
 # %%
-fig, axs = plt.subplots(5,5,figsize=(10,10),dpi=100,sharex=True,sharey=True)
+# Simulate microwave transfers to find 'fidelity'
+top_fidelities = np.zeros(len(states),dtype=np.double)
+desired_pulse_time = 100 * 1e-6 # microseconds, longer => increased fidelity
+for i, focus_state in enumerate(states):
+    at_Bi = best_b_index[i]
+    p = 1
+    for fi in range(4):
+        state_a_label = focus_state[fi%4]
+        state_b_label = focus_state[(fi+1)%4]
+        if (label_to_state_no(*state_a_label) is None) or (label_to_state_no(*state_b_label) is None):
+            p*=0
+        else:
+            up_efficiency = transfer_efficiency(state_a_label,state_b_label,at_Bi,pulse_time=desired_pulse_time)
+            down_efficiency = transfer_efficiency(state_b_label,state_a_label,at_Bi,pulse_time=desired_pulse_time)
+            p *= up_efficiency * down_efficiency
+        # print(p)
+        # print(state_a_label,'->', state_b_label,'efficiency:', efficiency)
+    top_fidelities[i] = p
+
+
+# %%
+# Rank state combinations
+rating = np.zeros(len(states),dtype=np.double)
+bestest_deviation = np.max(best_deviation)
+bestest_fidelity = np.max(top_fidelities)
+for i, focus_state in enumerate(states):
+    deviation = bestest_deviation/best_deviation[i]
+    fidelity = top_fidelities[i]
+    rating[i] = deviation*fidelity
+
+order = (-rating).argsort()
+
+# %%
+fig, axs = plt.subplots(4,4,figsize=(10,10),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+
+ordered_states = states[order]
+ordered_B = best_b_index[order]
+ordered_fidelities = top_fidelities[order]
+ordered_deviations = best_deviation[order]
 
 i=0
 for axh in axs:
     for ax in axh:
-        state_numbers = np.array([label_to_state_no(*state_label) for state_label in interesting_states[i]])
+        state_labels = ordered_states[i]
+        state_numbers = np.array([label_to_state_no(*state_label) for state_label in ordered_states[i]])
         ax.set_xlim(0,B_MAX*GAUSS)
         ax.set_ylim(2,6)
-        ax.plot(B*GAUSS,MAGNETIC_MOMENTS[:,state_numbers]/muN, alpha=1,linewidth=0.5,zorder=1);
-        ax.axvline(x=B[where_interesting[i]]*GAUSS, dashes=(3, 2), color='k', linewidth=1,alpha=0.4,zorder=0)
+        ax.set_xticks([0, 175, 350])
+        ax.set_yticks([2, 4, 6])
+        ax.plot(B*GAUSS,MAGNETIC_MOMENTS[:,state_numbers]/muN, alpha=1,linewidth=1.5,zorder=1);
+        ax.axvline(x=min(B[ordered_B[i]]*GAUSS,B_MAX*GAUSS*0.98), dashes=(3, 2), color='k', linewidth=1.5,alpha=0.3,zorder=0)
+        fidelity = ordered_fidelities[i]
+        print(fidelity)
+        max_dev = np.abs(ordered_deviations[i]/muN)
+        ax.set_title(f'd={max_dev:.3f} f={fidelity:.3f}')
+        ax.text(5,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
+        ax.text(85,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
+        ax.text(165,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
+        ax.text(245,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[3])))
         i+=1
 
-fig.text(0.5, 0.009, 'Magnetic Field $B_z$ (G)', ha='center', va='center')
-fig.text(0.009, 0.5, 'Magnetic Moment $\mu$ $(\mu_N)$', ha='center', va='center', rotation='vertical')
+fig.supxlabel( 'Magnetic Field $B_z$ (G)')
+fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
 
-
-# %%
-def transfer_efficiency(ai,bi):
-    transfered = np.ones(B_STEPS)
-    
-    a_label = state_no_to_uncoupled_label(ai)
-    b_label = state_no_to_uncoupled_label(bi)
-    print(a_label)
-    print(b_label)
-    print('---')
-    #P = b_m - a_m
-    COUPLING = COUPLINGS[0]
-    #print(P)
-    
-    for ci in range(N_STATES):
-        if ci == ai or ci == bi:
-            continue
-        g = np.abs(COUPLING[:, ai, ci]/COUPLING[:, ai, bi])
-        k = np.abs(((ENERGIES[:, ci] - ENERGIES[:, bi]) / scipy.constants.h) / (1/PULSE_TIME))
-        sub_transfered = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
-        transfered *= sub_transfered
-        
-    return transfered
-
-
-# %%
-# Simulate microwave transfers to find 'fidelity'
-focus_state = interesting_states[5]
-print(focus_state)
-p = np.ones(B_STEPS)
-for i in range(4):
-    state_a_pos = label_to_state_no(*focus_state[i%4])
-    state_b_pos = label_to_state_no(*focus_state[(i+1)%4])
-    p *= transfer_efficiency(state_a_pos,state_b_pos)
-print(p)
-
-
-# %%
+# fig.savefig('../images/magnetic-dipole-coincides.pdf')
 
 # %%

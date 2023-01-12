@@ -883,19 +883,21 @@ for v, axrow in enumerate(axs):
 magnetic_moments = calculate.magnetic_moment(STATES, N_MAX, Rb87Cs133)
 
 # %%
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(4,2.5))
 muN = scipy.constants.physical_constants['nuclear magneton'][0]
 #import itertools
 
-focus_moments = magnetic_moments[:,128:].T
-#to_plot = [(0,5,0),(0,4,0),(0,3,0),(0,4,1),(0,3,1),(0,3,2)]
-#to_plot_indices = np.array([label_to_state_no(N,MF,k) for N,MF,k in to_plot])
+to_plot = [(0,5,0),(0,4,0),(0,3,0),(0,4,1),(0,3,1),(0,3,2)]
+to_plot_indices = np.array([label_to_state_no(N,MF,k) for N,MF,k in to_plot])
 
-#c = plt.cm.gist_rainbow(np.linspace(0,1,96))
-#for moment in focus_moments:
-    #this_c = c[i]
-ax.plot(B*GAUSS,focus_moments.T/muN, color = 'grey', alpha=0.3,linewidth=0.5,zorder=0);
-    #ax.text(1.02*B_MAX*GAUSS, moment[-1]/muN, r'$|N={},M_F={}\rangle_{}$'.format(int(label[0]),int(label[1]),int(label[2])), va='center', ha='left', fontsize=2, color = this_c)
+# c = plt.cm.rainbow(np.linspace(0,1,len(to_plot_indices)))
+i=0
+for moment in to_plot_indices:
+    label = to_plot[i]
+    this_c = ['green','red','blue'][label[1]-4]
+    ax.plot(B*GAUSS,magnetic_moments[:,moment]/muN, color = this_c, alpha=1,linewidth=1,zorder=10);
+    ax.text(1.02*B_MAX*GAUSS, magnetic_moments[-1,moment]/muN, r'$|N={},M_F={}\rangle_{}$'.format(int(label[0]),int(label[1]),int(label[2])), va='center', ha='left', fontsize=8, color = this_c)
+    i+=1
     
     #Find coincidences
 
@@ -906,9 +908,11 @@ ax.plot(B*GAUSS,focus_moments.T/muN, color = 'grey', alpha=0.3,linewidth=0.5,zor
 #     ys = (moment_a[sign_flip_low_indices]+moment_a[sign_flip_low_indices+1])/(2*muN)
 #     ax.scatter(xs, ys,color='k',s=0.4,zorder=1)
     
-#ax.set_ylim(5.5,1.5)
+ax.set_ylim(5.5,1.5)
 ax.set_xlim(0,B_MAX*GAUSS)
 ax.set_ylabel("Magnetic Moment $\mu$ $(\mu_N)$")
 ax.set_xlabel("Magnetic Field $B_z$ (G)")
+
+fig.savefig('../images/magnetic-moments.pdf')
 
 # %%
