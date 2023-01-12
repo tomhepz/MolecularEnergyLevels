@@ -130,6 +130,7 @@ from matplotlib.pyplot import cm
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import FuncFormatter, MultipleLocator
+from matplotlib import colors
 
 plt.rcParams["text.usetex"] = True
 plt.rcParams["font.family"] = 'sans-serif'
@@ -254,10 +255,22 @@ for i,(k,g,p) in enumerate(example_points):
 # fig.savefig('../images/4-panel-3-state-evolution.pdf')
 
 # %%
-fig, ax = plt.subplots(figsize=(6,3.5))
-
-def peak_analytic(k,g):
+def twice_average_fidelity(k,g):
     return ((1 + g**2)**2 + 8*k**2*(-1 + 2*g**2) + 16*k**4)/((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+
+def maximum_fidelity(k,g):
+    phi = np.arccos((k*(18-9*g**2-8*k**2))/(3+3*g**2+4*k**2)**(3/2))/3
+    
+    denominator = 54*((1+g**2)**3+(-8+20*g**2+g**4)*k**2+16*k**4)
+    
+    numerator = (
+                 36*(g**4+(1-4*k**2)**2+2*g**2*(1+8*k**2))
+               + 32*k    *(3+3*g**2+4*k**2)**(3/2) *np.cos(phi)
+               - 64*k**2 *(3+3*g**2+4*k**2)        *np.cos(2*phi) 
+               -  4      *(3+3*g**2+4*k**2)**2     *np.cos(4*phi)
+                )
+    
+    return numerator/denominator
 
 k_exp_range = (-3,3)
 g_exp_range = (-3,3)
@@ -267,106 +280,44 @@ gs = np.logspace(*g_exp_range,1000)
 
 ks, gs = np.meshgrid(ks,gs)
 
-fidelities = peak_analytic(ks,gs)
-
-from matplotlib import colors
-Norm  = colors.Normalize(vmin=0, vmax=1)
-
-
-ax.set_xscale('log')
-ax.set_yscale('log')
-noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
-k=6
-normalised_fidelity = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
-cf = ax.contourf(ks,gs,normalised_fidelity,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
-cf = ax.contourf(ks,gs,normalised_fidelity,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
-CS1 = ax.contour(ks,gs,fidelities,noted_levels,
-                         colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
-
-fmt = {}
-strs = [f"{n*100:.3f}\%" for n in noted_levels]
-for l, s in zip(CS1.levels, strs):
-    fmt[l] = s
-
-labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
-ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions)
-
-if example_points is not None:
-    for k,g,_ in example_points:
-        ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
-
-
-ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
-ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
-ax.set_xlabel('$\kappa$')
-ax.set_ylabel('$\Gamma$')
-
-# fig.savefig('../images/3-level-phase.pdf')
+twice_average_fidelities = twice_average_fidelity(ks,gs)
+maximum_fidelities = maximum_fidelity(ks,gs)
 
 # %%
-fig, ax = plt.subplots(figsize=(6,3.5))
+fig, (axl,axr) = plt.subplots(1,2,figsize=(6,3.5),sharey=True)
 
-def peak_manual(k,g):
-    coeff = [1, 2*k, -(1+g**2),-2*k]
-    roots = np.roots(coeff)
-    a=roots[0]
-    b=roots[1]
-    c=roots[2]
-
-    normalisation = 1/((a-b)*(c-a)*(b-c))**2
-
-    coefficients = np.array([
-        (b - c)*(2*k+a),(c - a)*(2*k+b),(a - b)*(2*k+c)
-    ])
-
-    average = np.sum(coefficients**2,0)
-
-    beat_amplitudes = np.abs(np.array([2*coefficients[0]*coefficients[1],2*coefficients[2]*coefficients[0],2*coefficients[1]*coefficients[2]]))
-    peak_value = normalisation*(average+np.sum(beat_amplitudes))
-    return peak_value
-
-
-k_exp_range = (-3,3)
-g_exp_range = (-3,3)
-
-ks = np.logspace(*k_exp_range,100)
-gs = np.logspace(*g_exp_range,100)
-
-ks, gs = np.meshgrid(ks,gs)
-
-fidelities = np.vectorize(peak_manual)(ks,gs)
-
-from matplotlib import colors
 Norm  = colors.Normalize(vmin=0, vmax=1)
 
-
-ax.set_xscale('log')
-ax.set_yscale('log')
 noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
-k=6
-normalised_fidelity = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
-cf = ax.contourf(ks,gs,normalised_fidelity,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
-cf = ax.contourf(ks,gs,normalised_fidelity,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
-CS1 = ax.contour(ks,gs,fidelities,noted_levels,
-                         colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
 
-fmt = {}
-strs = [f"{n*100:.3f}\%" for n in noted_levels]
-for l, s in zip(CS1.levels, strs):
-    fmt[l] = s
 
-labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
-ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions)
 
-if example_points is not None:
+axl.set_ylabel('$\Gamma$')
+for ax, fidelities in [(axl,twice_average_fidelities),(axr,maximum_fidelities)]:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+    ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
+    ax.set_xlabel('$\kappa$')
+
+    k=7
+    normalised_fidelies = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
+    cf = ax.contourf(ks,gs,normalised_fidelies,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
+    cf = ax.contourf(ks,gs,normalised_fidelies,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
+    CS1 = ax.contour(ks,gs,fidelities,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
+
+    fmt = {}
+    strs = [f"{n*100:.3f}\%" for n in noted_levels]
+    for l, s in zip(CS1.levels, strs):
+        fmt[l] = s
+
+    labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
+    ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions,fontsize='small')
+
     for k,g,_ in example_points:
         ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
 
 
-ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
-ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
-ax.set_xlabel('$\kappa$')
-ax.set_ylabel('$\Gamma$')
 
 # fig.savefig('../images/3-level-phase.pdf')
 
@@ -464,11 +415,11 @@ ax.plot(times, finals)
 
 # %% [markdown] tags=[]
 """
-# Exact Numeric n-level system
+# Exact Numeric 2-level system
 
 ```
----- 1e13 + 1e7
----- 1e13
+---- FIRST + DETUNING
+---- FIRST
  ^
  |
  |
@@ -481,8 +432,8 @@ ax.plot(times, finals)
 fig, ax = plt.subplots()
 
 INITIAL_STATE = 0
-DETUNING = 0.45
 FIRST = 1e1
+DETUNING = 0.45
 angular = [0, FIRST, FIRST+DETUNING]
 N_STATES = len(angular)
 
