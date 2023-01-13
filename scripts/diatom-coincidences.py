@@ -68,8 +68,8 @@ E = 0 #V/m
 
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
-B_MAX = 350 / GAUSS # T
-B_STEPS = 350
+B_MAX = 400 / GAUSS # T
+B_STEPS = 400
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -145,6 +145,22 @@ print(label_to_state_no(*(2, 4, 13)))
 
 
 # %%
+def twice_average_fidelity(k,g):
+    return ((1 + g**2)**2 + 8*k**2*(-1 + 2*g**2) + 16*k**4)/((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+
+def maximum_fidelity(k,g):
+    phi = np.arccos((k*(18-9*g**2-8*k**2))/(3+3*g**2+4*k**2)**(3/2))/3
+    denominator = 54*((1+g**2)**3+(-8+20*g**2+g**4)*k**2+16*k**4)
+    numerator = (
+                 36*(g**4+(1-4*k**2)**2+2*g**2*(1+8*k**2))
+               + 32*k    *(3+3*g**2+4*k**2)**(3/2) *np.cos(phi)
+               - 64*k**2 *(3+3*g**2+4*k**2)        *np.cos(2*phi) 
+               -  4      *(3+3*g**2+4*k**2)**2     *np.cos(4*phi)
+                )
+    return numerator/denominator
+
+
+# %%
 def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
     state1i = label_to_state_no(*state1_label)
     state2i = label_to_state_no(*state2_label)
@@ -155,7 +171,7 @@ def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_tim
     
     g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
     k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-    sub_transfered = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+    sub_transfered = maximum_fidelity(k,g)
     
     return sub_transfered
 
@@ -175,11 +191,13 @@ def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
             continue
         g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
         k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-        sub_transfered = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+        sub_transfered = maximum_fidelity(k,g)
         transfered *= sub_transfered
         
     return transfered
 
+
+# %%
 
 # %%
 print(transfer_efficiency((0,5,0),(1,4,1),int(B_STEPS/2)))
@@ -196,6 +214,12 @@ print(transfer_efficiency((1,3,1),(2,2,0),int(B_STEPS/2)))
 print(transfer_efficiency((2,2,0),(1,3,0),int(B_STEPS/2)))
 print(transfer_efficiency((1,3,0),(0,4,1),int(B_STEPS/2)))
 print(transfer_efficiency((0,4,1),(1,3,0),int(B_STEPS/2)))
+print('-----------------')
+# (0,4,1),(1,4,5),(2,4,0),(1,4,0)
+print(transfer_efficiency((0,4,1),(1,4,5),int(65)))
+print(transfer_efficiency((1,4,5),(2,4,2),int(65)))
+print(transfer_efficiency((2,4,2),(1,4,1),int(65)))
+print(transfer_efficiency((1,4,1),(0,4,1),int(65)))
 
 # %%
 print(transfer_efficiency((0,5,0),(1,6,0),int(B_STEPS-1)))
@@ -324,16 +348,10 @@ for i,state_posibility in enumerate(states):
     best_deviation[i] = np.abs(min_diff)
     best_b_index[i] = min_diff_loc
 
-# order = best_deviation.argsort()
-
-# where_interesting = np.array(where)[order]
-# interesting_states = np.array(states)[order]
-# interesting_deviation = np.array(ranking)[order]
-
 # %%
 # Simulate microwave transfers to find 'fidelity'
 top_fidelities = np.zeros(len(states),dtype=np.double)
-desired_pulse_time = 100 * 1e-6 # microseconds, longer => increased fidelity
+desired_pulse_time = 1000 * 1e-6 # microseconds, longer => increased fidelity
 for i, focus_state in enumerate(states):
     at_Bi = best_b_index[i]
     p = 1
@@ -363,8 +381,8 @@ for i, focus_state in enumerate(states):
 
 order = (-rating).argsort()
 
-# %%
-fig, axs = plt.subplots(4,4,figsize=(10,10),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+# %% tags=[]
+fig, axs = plt.subplots(5,5,figsize=(12,12),dpi=100,sharex=True,sharey=True,constrained_layout=True)
 
 ordered_states = states[order]
 ordered_B = best_b_index[order]
@@ -378,23 +396,117 @@ for axh in axs:
         state_numbers = np.array([label_to_state_no(*state_label) for state_label in ordered_states[i]])
         ax.set_xlim(0,B_MAX*GAUSS)
         ax.set_ylim(2,6)
-        ax.set_xticks([0, 175, 350])
+        ax.set_xticks([0, 100, 200, 300, 400])
         ax.set_yticks([2, 4, 6])
         ax.plot(B*GAUSS,MAGNETIC_MOMENTS[:,state_numbers]/muN, alpha=1,linewidth=1.5,zorder=1);
-        ax.axvline(x=min(B[ordered_B[i]]*GAUSS,B_MAX*GAUSS*0.98), dashes=(3, 2), color='k', linewidth=1.5,alpha=0.3,zorder=0)
+        ax.axvline(x=min(B[ordered_B[i]]*GAUSS,B_MAX*GAUSS*0.98), dashes=(3, 2), color='k', linewidth=1.5,alpha=0.3,zorder=0,ymax=0.65)
         fidelity = ordered_fidelities[i]
-        print(fidelity)
+        print("f",fidelity,"bi",ordered_B[i])
         max_dev = np.abs(ordered_deviations[i]/muN)
-        ax.set_title(f'd={max_dev:.3f} f={fidelity:.3f}')
-        ax.text(5,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
-        ax.text(85,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
-        ax.text(165,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
-        ax.text(245,5.5,r'$|{},{}\rangle_{}$'.format(*(state_labels[3])))
+        ax.set_title(f'd={max_dev:.4f} f={fidelity:.4f}')
+        ax.text(60,4.8,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
+        ax.text(115,5.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
+        ax.text(60,5.6,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
+        ax.text(5,5.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[3])))
         i+=1
 
 fig.supxlabel( 'Magnetic Field $B_z$ (G)')
 fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
 
-# fig.savefig('../images/magnetic-dipole-coincides.pdf')
+fig.savefig('../images/magnetic-dipole-coincides.pdf')
+
+# %% [markdown]
+"""
+# Simulate synthetic dimension
+"""
+
+# %%
+chosen_states = np.array([(0,4,1),(1,4,4),(2,4,3),(1,4,3)])
+chosen_states_indices = np.array([label_to_state_no(*label) for label in chosen_states])
+chosen_bi = 253
+T_STEPS =  [1000000,65519,21319,9391][0]
+scale = 1
+chosen_pulse_time = 100129 * 1e-6 * (1/scale)
+TIME = chosen_pulse_time*50
+
+# Get Angular Frequency Matrix Diagonal for each B
+angular = ENERGIES[chosen_bi, :].real / H_BAR # [state]
+angular = scale * angular
+
+# Get driving frequencies
+chosen_states_angular = angular[chosen_states_indices]
+driving = np.array([chosen_states_angular[1]-chosen_states_angular[0],
+                    chosen_states_angular[2]-chosen_states_angular[1],
+                    chosen_states_angular[2]-chosen_states_angular[3],
+                    chosen_states_angular[3]-chosen_states_angular[0]])
+
+
+
+# Get desired E field for each B and rabi frequency 
+chosen_state_couplings = np.array([
+                          COUPLINGS_ZERO[chosen_bi, chosen_states_indices[0], chosen_states_indices[1]],
+                          COUPLINGS_ZERO[chosen_bi, chosen_states_indices[1], chosen_states_indices[2]],
+                          COUPLINGS_ZERO[chosen_bi, chosen_states_indices[2], chosen_states_indices[3]],
+                          COUPLINGS_ZERO[chosen_bi, chosen_states_indices[3], chosen_states_indices[0]]
+                         ])
+E_i = np.abs((2*np.pi*H_BAR) / (D_0 * chosen_state_couplings * chosen_pulse_time))
+print(E_i)
+E_i[0] /= 5
+E_i[2] /= 5
+# E_i[0]=1.824e+02
+# E_i[1]=1.824e+02
+# E_i[2]=1.824e+02
+E_i[3]=0
+# E_i = [0,0,0,6.145e-04]
+# E_i = np.array([1.739e-01, 0, 0, 0]) #np.abs((2*np.pi*H_BAR) / (D_0 * chosen_state_couplings * chosen_pulse_time))
+
+# Construct times
+times, DT = np.linspace(0,TIME,num=T_STEPS,retstep=True)
+print(2*np.pi/driving)
+print(DT)
+
+# Construct 'kinetic' time step operator (Matrix Diagonal)
+T_OP_DIAG = np.exp(-(1j) * angular[chosen_states_indices] * DT/2 )
+
+# Construct potential fixed part time step operator 
+ORDER = 6
+
+THIS_COUPLING = STATES[chosen_bi, :, chosen_states_indices].conj() @ (dipole_op_zero @ STATES[chosen_bi, :, chosen_states_indices].transpose(1, 0))
+V_TI_M = (-(1j)*D_0*THIS_COUPLING*DT)/H_BAR
+print(V_TI_M.shape)
+V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) for i in range(ORDER)])
+
+# Construct state vector
+state_vector = np.zeros((T_STEPS,4), dtype=np.cdouble)
+state_vector[0,0] = np.sqrt(0.5+0.4)
+state_vector[0,1] = np.sqrt(0.5-0.4)
+# state_vector[0,chosen_states_indices[1]] = 1/np.sqrt(4)
+# state_vector[0,chosen_states_indices[2]] = 1/np.sqrt(4)
+# state_vector[0,chosen_states_indices[3]] = 1/np.sqrt(4)
+
+#path = np.einsum_path('ij,i->j',V_TI_M, state_vector, optimize='optimal')[0]
+for t_num in range(T_STEPS-1):
+    V_TD = np.sum(E_i*np.cos(driving*times[t_num]))
+    V_TD_POWS = V_TD**(np.arange(ORDER))
+    V_OP = np.sum(V_TI_M_POWS*V_TD_POWS[:,None,None],axis=0)
+
+    DU = T_OP_DIAG[:,None] * V_OP[:,:] * T_OP_DIAG[None,:]
+    state_vector[t_num+1] = DU @ state_vector[t_num] #np.einsum('ij,i->j',DU,state_vector[t_num], optimize=path)
+    
+    
+probabilities = np.abs(state_vector)**2
+
+# %%
+fig,ax = plt.subplots()
+ax.set_xlabel('t(us)')
+ax.set_ylim(0,1.4)
+ax.set_xlim(0,TIME*1e6)
+c = ['red','green','blue','purple']
+# ax.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.3);
+i=0
+for state_index in range(4):
+    ax.plot(times*1e6,probabilities[:,state_index],c=c[i],linewidth=0.5);
+    i+=1
+
 
 # %%

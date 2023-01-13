@@ -284,7 +284,7 @@ twice_average_fidelities = twice_average_fidelity(ks,gs)
 maximum_fidelities = maximum_fidelity(ks,gs)
 
 # %%
-fig, (axl,axr) = plt.subplots(1,2,figsize=(6,3.5),sharey=True)
+fig, (axl,axr) = plt.subplots(1,2,figsize=(6,3),sharey=True,constrained_layout=True)
 
 Norm  = colors.Normalize(vmin=0, vmax=1)
 
@@ -319,7 +319,7 @@ for ax, fidelities in [(axl,twice_average_fidelities),(axr,maximum_fidelities)]:
 
 
 
-# fig.savefig('../images/3-level-phase.pdf')
+fig.savefig('../images/3-level-phase.pdf')
 
 # %% [markdown]
 r"""
