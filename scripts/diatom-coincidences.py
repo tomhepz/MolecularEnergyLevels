@@ -161,9 +161,12 @@ def label_degeneracy(N,MF):
 
 # %%
 print(label_degeneracy(2,3))
-print(label_degeneracy(2,20))
+print(label_degeneracy(2,6))
+print(label_degeneracy(2,-6))
 print(label_to_state_no(*(2,-3,13)))
 print(label_to_state_no(*(2,-3,14)))
+print(label_to_state_no(*(2,-6,0)))
+print(label_to_state_no(*(2,-7,0)))
 
 
 # %%
@@ -175,7 +178,7 @@ def reachable_above_from(N,MF):
 
 
 # %%
-reachable_above_from(0,4)
+reachable_above_from(0,0)
 
 
 # %%
@@ -288,10 +291,10 @@ ax2.set_xlabel("Magnetic Field $B_z$ (G)")
 """
 
 # %% tags=[]
-polarisation = None             # Polarisation: -1,0,1,None
+polarisation = None               # Polarisation: -1,0,1,None
 initial_state_label = (0,4,1)   # Which state to go from
 focus_state_label = (1,5,0)     # Which state to highlight
-desired_pulse_time = 2000*1e-6   # What desired pulse time (s)
+desired_pulse_time = 100*1e-6   # What desired pulse time (s)
 dynamic_range = 8               # What Dynamic range to use for Fidelity
 #################################
 
@@ -320,6 +323,8 @@ axb = fig.add_subplot(gs[1, :])
 fig.suptitle(r'$|{},{}\rangle_{} \xrightarrow{{{}}} |1,M_F\rangle_i $'.format(*initial_state_label, polarisation_text))
 
 axl.set_xlim(0,B_MAX*GAUSS)
+axm.set_xlim(0,B_MAX*GAUSS)
+axr.set_xlim(0,B_MAX*GAUSS)
 
 axm.set_ylim(-0.1,dynamic_range+0.1)
 axr.set_ylim(-0.1,dynamic_range+0.1)
@@ -400,6 +405,128 @@ for i, focus_state_index in enumerate(accessible_state_indices):
 
 # %% [markdown]
 """
+# Robust Storage Bit Optimisation
+"""
+
+# %%
+# Find all possible combinations
+# two states in N, one in N+-1
+
+possibilities = []
+for N1 in range(0,N_MAX+1):
+    for N2 in [N1-1,N1+1]:
+        if N2 < 0 or N2 > N_MAX:
+            continue
+        F1 = round(N1+I1+I2)
+        F2 = round(N2+I1+I2)
+        for MF1 in [3,4,5]+([6] if N1>0 else []):#range(-F1,F1+1,1):
+            for p1 in [-1,0,1]:
+                for p2 in [-1,0,1]:
+                    if MF1+p1 > F2 or MF1+p1 < -F2 or MF1+p2 > F2 or MF1+p2 < -F2:
+                        continue
+                    MF2a = MF1+p1
+                    MF2b = MF1+p2
+                    for i in range(label_degeneracy(N1,MF1)):
+                        for j in range(label_degeneracy(N2,MF2a)):
+                            for k in range(label_degeneracy(N2,MF2b)):
+                                if MF2a == MF2b and j == k:
+                                    continue
+                                possibilities.append([(N1,MF1,i),(N2,MF2a,j),(N2,MF2b,k)])
+possibilities = np.array(possibilities)
+print(len(possibilities))
+
+# %%
+# Find best B for minimum dipole deviation
+best_deviation = np.ones((len(possibilities)),dtype=np.double)
+best_b_index = np.ones((len(possibilities)),dtype=int)
+for i,state_posibility in enumerate(possibilities):
+    desired_indices = np.array([
+        label_to_state_no(*state_posibility[0]),
+        label_to_state_no(*state_posibility[1]),
+        label_to_state_no(*state_posibility[2])
+    ])
+    if desired_indices.all() != None:
+        all_moments = MAGNETIC_MOMENTS[:,desired_indices]
+        max_moment = np.amax(all_moments,axis=1)
+        min_moment = np.amin(all_moments,axis=1)
+        deviation = max_moment - min_moment
+        
+    min_diff_loc = np.argmin(deviation)
+    min_diff = deviation[min_diff_loc]
+
+    best_deviation[i] = np.abs(min_diff)
+    best_b_index[i] = min_diff_loc
+
+# %%
+# Simulate microwave transfers to find 'fidelity'
+top_fidelities = np.zeros(len(possibilities),dtype=np.double)
+desired_pulse_time = 100 * 1e-6 # microseconds, longer => increased fidelity
+for i, focus_state in enumerate(possibilities):
+    at_Bi = best_b_index[i]
+    p = 1
+    for fi in [1,2]:
+        state_a_label = focus_state[0]
+        state_b_label = focus_state[fi]
+        if (label_to_state_no(*state_a_label) is None) or (label_to_state_no(*state_b_label) is None):
+            p*=0
+        else:
+            up_efficiency = transfer_efficiency(state_a_label,state_b_label,at_Bi,pulse_time=desired_pulse_time)
+            down_efficiency = transfer_efficiency(state_b_label,state_a_label,at_Bi,pulse_time=desired_pulse_time)
+            p *= up_efficiency * down_efficiency
+        # print(p)
+        # print(state_a_label,'->', state_b_label,'efficiency:', efficiency)
+    top_fidelities[i] = p
+
+
+# %% tags=[]
+# Rank state combinations
+rating = np.zeros(len(possibilities),dtype=np.double)
+bestest_deviation = np.max(best_deviation)
+bestest_fidelity = np.max(top_fidelities)
+for i, focus_state in enumerate(possibilities):
+    deviation = bestest_deviation/best_deviation[i]
+    fidelity = top_fidelities[i]
+    rating[i] = deviation*fidelity
+
+order = (-rating).argsort()
+
+# %% tags=[]
+fig, axs = plt.subplots(5,5,figsize=(12,12),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+
+ordered_states = possibilities[order]
+ordered_B = best_b_index[order]
+ordered_fidelities = top_fidelities[order]
+ordered_deviations = best_deviation[order]
+
+i=0
+for axh in axs:
+    for ax in axh:
+        state_labels = ordered_states[i+50]
+        state_numbers = np.array([label_to_state_no(*state_label) for state_label in ordered_states[i]])
+        ax.set_xlim(0,B_MAX*GAUSS)
+        ax.set_ylim(-2,7)
+        # ax.set_xticks([0, 100, 200, 300, 400])
+        # ax.set_yticks([2, 4, 6])
+        ax.plot(B*GAUSS,MAGNETIC_MOMENTS[:,state_numbers]/muN, alpha=1,linewidth=1.5,zorder=1);
+        ax.axvline(x=min(B[ordered_B[i]]*GAUSS,B_MAX*GAUSS*0.98), dashes=(3, 2), color='k', linewidth=1.5,alpha=0.3,zorder=0)
+        fidelity = ordered_fidelities[i]
+        print("f",fidelity,"bi",ordered_B[i])
+        max_dev = np.abs(ordered_deviations[i]/muN)
+        ax.set_title(f'd={max_dev:.4f} f={fidelity:.4f}')
+        ax.text(100,5.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
+        ax.text(40,6.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
+        ax.text(160,6.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
+        i+=1
+
+fig.supxlabel( 'Magnetic Field $B_z$ (G)')
+fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
+
+# fig.savefig('../images/magnetic-dipole-coincides.pdf')
+
+# %%
+
+# %% [markdown]
+"""
 # Find Coindidences
 """
 
@@ -475,7 +602,7 @@ for i, focus_state in enumerate(states):
     top_fidelities[i] = p
 
 
-# %%
+# %% tags=[]
 # Rank state combinations
 rating = np.zeros(len(states),dtype=np.double)
 bestest_deviation = np.max(best_deviation)
