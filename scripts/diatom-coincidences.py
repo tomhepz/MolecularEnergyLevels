@@ -33,6 +33,7 @@ import scipy.constants
 
 import matplotlib.pyplot as plt
 import matplotlib.colors
+from matplotlib.gridspec import GridSpec
 
 import mpl_interactions.ipyplot as iplt
 from mpl_interactions.controller import Controls
@@ -286,11 +287,11 @@ ax2.set_xlabel("Magnetic Field $B_z$ (G)")
 # Optimise 2-level
 """
 
-# %%
+# %% tags=[]
 polarisation = None             # Polarisation: -1,0,1,None
 initial_state_label = (0,4,1)   # Which state to go from
 focus_state_label = (1,5,0)     # Which state to highlight
-desired_pulse_time = 500*1e-6   # What desired pulse time (s)
+desired_pulse_time = 2000*1e-6   # What desired pulse time (s)
 dynamic_range = 8               # What Dynamic range to use for Fidelity
 #################################
 
@@ -308,7 +309,13 @@ accessible_state_labels = reachable_above_from(initial_state_label[0],initial_st
 accessible_state_indices = [label_to_state_no(*label) for label in accessible_state_labels]
 state_cmap = plt.cm.gist_rainbow(np.linspace(0,1,len(accessible_state_labels)))
 
-fig, (axl, axm, axr) = plt.subplots(1,3,sharex=True,figsize=(6,3),constrained_layout=True)
+fig = plt.figure(constrained_layout=True,figsize=(6,6))
+
+gs = GridSpec(2, 3, figure=fig)
+axl = fig.add_subplot(gs[0, 0])
+axm = fig.add_subplot(gs[0, 1])
+axr = fig.add_subplot(gs[0, 2])
+axb = fig.add_subplot(gs[1, :])
 
 fig.suptitle(r'$|{},{}\rangle_{} \xrightarrow{{{}}} |1,M_F\rangle_i $'.format(*initial_state_label, polarisation_text))
 
@@ -346,6 +353,7 @@ axm.plot(B*GAUSS,fidelity(transfered, dynamic_range),c=state_cmap[accessible_sta
     
 
 # # Right all state plots
+accessible_transfered = []
 for i, focus_state_index in enumerate(accessible_state_indices):
     this_colour = state_cmap[i]
     transfered = np.ones(B_STEPS)
@@ -357,96 +365,38 @@ for i, focus_state_index in enumerate(accessible_state_indices):
             g = np.abs(coupling[:, a, off_res_index]/coupling[:, a, b])
             sub_transfered = twice_average_fidelity(k,g)
             transfered *= sub_transfered
-    axr.plot(B*GAUSS,fidelity(transfered, dynamic_range),c=this_colour)
-
-# %% [markdown]
-"""
-# Optimise 2-level from 0,4,1
-"""
-
-# %%
-P = None
-initial_state_label = (0,4,1)
-initial_state_position = label_to_state_no(*initial_state_label)
-FOCUS_STATE = (1,3,2)
-PULSE_TIME = 500*1e-6
-D_RANGE_EXP = 8
-D_RANGE=1*10**(-D_RANGE_EXP)
-
-if P is None:
-    COUPLING = COUPLINGS[0]+COUPLINGS[1]+COUPLINGS[-1]
-    P_TEXT = '\pi/\sigma_\pm'
-else:
-    COUPLING = COUPLINGS[P]
-    P_TEXT = ['\pi','\sigma_+','\pi/\sigma_\pm','\sigma_-'][P]
-
-
-FOCUS_STATE_INDEX = label_to_state_no(*FOCUS_STATE)
-
-
-fig, (axl, axm, axr) = plt.subplots(1,3,sharex=True,figsize=(6,3),constrained_layout=True)
-
-fig.suptitle(r'$|{},{}\rangle_{} \xrightarrow{{{}}} |1,M_F\rangle_i $'.format(*initial_state_label,P_TEXT))
-
-axl.set_xlim(0,B_MAX*GAUSS)
-
-axl.set_ylim(-0.5,1.5)
-axm.set_ylim(0,D_RANGE_EXP)
-axr.set_ylim(0,D_RANGE_EXP)
-
-axl.set_ylabel("Detuning (MHz) - 980MHz")
-axm.set_ylabel("Fidelity")
-axr.set_ylabel("Fidelity")
-fig.supxlabel('Magnetic Field $B_z$ (G)')
-
-# Left zeeman plot
-for state_position in range(N_STATES):
-    # i+=1
-    # this_colour = STATE_CMAP[i]
-    det = ((ENERGIES[:, state_position] - ENERGIES[:, initial_state_position]) / scipy.constants.h)
-    absg = np.abs(COUPLING[:, initial_state_position, state_position])
-    axl.scatter(B*GAUSS, det/1e6-980, edgecolors=None, alpha=absg**2, s=absg ** 2 * 50, zorder=2)    
-    axl.plot(B*GAUSS,det/1e6-980,color='k',linewidth=0.5,zorder=3,alpha=0.3)
-    
-# Middle single state plot
-transfered = np.ones(B_STEPS)
-
-state1i = initial_state_position
-state2i = FOCUS_STATE_INDEX
-
-
-for state3i in range(N_STATES):
-    if state3i == state1i or state3i == state2i:
-        continue
-    # this_colour=STATE_CMAP[CONSIDERED_STATE_POSITIONS.index(state3i)] if state3i in CONSIDERED_STATE_POSITIONS else 'black'
-    for (a,b) in [(state1i,state2i),(state2i,state1i)]:
-        g = np.abs(COUPLING[:, a, state3i]/COUPLING[:, a, b])
-        k = np.abs(((ENERGIES[:, state3i] - ENERGIES[:, b]) / scipy.constants.h) / (1/PULSE_TIME))
-        sub_transfered = twice_average_fidelity(k,g)
-        axm.plot(B*GAUSS,-np.log10(1-sub_transfered+D_RANGE),linestyle='dashed',linewidth=1)
-        transfered *= sub_transfered
-
-axm.plot(B*GAUSS,-np.log10(1-transfered+D_RANGE))
+    accessible_transfered.append(transfered)
+    axr.plot(B*GAUSS,fidelity(transfered, dynamic_range),c=this_colour,linewidth=1)
     
 
-# # Right all state plots
-for state_position in range(N_STATES):
-    # this_colour=STATE_CMAP[i+1]
-    transfered = np.ones(B_STEPS)
+axb.set_xlim(0,B_MAX*GAUSS)
+axb.set_ylim(-1,1)
+axb.set_xlabel('Magnetic Field $B_z$ (G)')
+axb.set_ylabel('Magnetic Moment Difference $\Delta$ $(\mu_N)$')
 
-    state1i = initial_state_position
-    state2i = state_position
 
-    for state3i in range(N_STATES):
-        if state3i == state1i or state3i == state2i:
+axb.axhline(0, dashes=(3, 2), color='k', linewidth=1.5, alpha=1, zorder=3)
+for i, focus_state_index in enumerate(accessible_state_indices):
+    this_colour = state_cmap[i]
+    magnetic_moment_difference = (MAGNETIC_MOMENTS[:,focus_state_index]-MAGNETIC_MOMENTS[:,initial_state_index])
+    axb.plot(B*GAUSS,magnetic_moment_difference/muN, alpha=1,linewidth=1,zorder=1,c=this_colour)
+    abs_magnetic_moment_difference = np.abs(magnetic_moment_difference)
+    min_delta = np.argmin(abs_magnetic_moment_difference)
+    if abs_magnetic_moment_difference[min_delta]/muN < 0.3:
+        this_transferred = accessible_transfered[i][min_delta]
+        if this_transferred < 0.5:
             continue
-        for (a,b) in [(state1i,state2i),(state2i,state1i)]:
-            g = np.abs(COUPLING[:, a, state3i]/COUPLING[:, a, b])
-            k = np.abs(((ENERGIES[:, state3i] - ENERGIES[:, b]) / scipy.constants.h) / (1/PULSE_TIME))
-            sub_transfered = twice_average_fidelity(k,g)
-            transfered *= sub_transfered
+        text_place = B[min_delta]*GAUSS
+        line_place = max(min(B[min_delta]*GAUSS,B_MAX*GAUSS*0.99),B_MAX*GAUSS*0.01)
+        axb.axvline(line_place,ymin=0.5,color=this_colour,linewidth=1,dashes=(3,2))
+        this_transferred = accessible_transfered[i][min_delta]
+        this_transferred_string = f"{this_transferred:.4f}"
+        axb.text(text_place,1.02,this_transferred_string,rotation=60,c=this_colour)
 
-    axr.plot(B*GAUSS,-np.log10(1-transfered+D_RANGE))
+
+
+    
+
 
 # %% [markdown]
 """
