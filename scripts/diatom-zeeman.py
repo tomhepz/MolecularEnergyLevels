@@ -122,6 +122,64 @@ def state_no_to_uncoupled_label(state_no):
                     i+=1
 
 
+# %%
+def twice_average_fidelity(k,g):
+    return ((1 + g**2)**2 + 8*k**2*(-1 + 2*g**2) + 16*k**4)/((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+
+def maximum_fidelity(k,g):
+    phi = np.arccos((k*(18-9*g**2-8*k**2))/(3+3*g**2+4*k**2)**(3/2))/3
+    denominator = 54*((1+g**2)**3+(-8+20*g**2+g**4)*k**2+16*k**4)
+    numerator = (
+                 36*(g**4+(1-4*k**2)**2+2*g**2*(1+8*k**2))
+               + 32*k    *(3+3*g**2+4*k**2)**(3/2) *np.cos(phi)
+               - 64*k**2 *(3+3*g**2+4*k**2)        *np.cos(2*phi) 
+               -  4      *(3+3*g**2+4*k**2)**2     *np.cos(4*phi)
+                )
+    return numerator/denominator
+
+
+# %%
+def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
+    state1i = label_to_state_no(*state1_label)
+    state2i = label_to_state_no(*state2_label)
+    state3i = label_to_state_no(*state3_label)
+    
+    P = state1_label[1] - state2_label[1]
+    COUPLING = COUPLINGS[P]
+    
+    g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
+    k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
+    sub_transfered = maximum_fidelity(k,g)
+    
+    return sub_transfered
+
+
+# %%
+def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
+    transfered = 1
+    
+    state1i = label_to_state_no(*state1_label)
+    state2i = label_to_state_no(*state2_label)
+
+    P = (state1_label[1] - state2_label[1])*(state2_label[0] - state1_label[0])
+    COUPLING = COUPLINGS[P]
+    
+    for state3i in range(len(ENERGIES[0])):
+        if state3i == state1i or state3i == state2i:
+            continue
+        g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
+        k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
+        sub_transfered = twice_average_fidelity(k,g)
+        transfered *= sub_transfered
+        
+    return transfered
+
+
+# %%
+transfer_efficiency((0,5,0),(1,5,2),5)
+
+# %%
+
 # %% [markdown]
 """
 # General Constants
@@ -149,12 +207,22 @@ STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,len(CONSIDERED_STATE_POSITIONS)
 # Plot Transition Dipole Moments
 dipole_op_pos = calculate.dipole(N_MAX,I1,I2,1,1)
 tdm_matrices_pos = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op_pos @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
+all_tdm_matrices_pos = (STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_pos @ STATES[:, :, :])).real
+
 
 dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
 tdm_matrices_zero = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op_zero @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
+all_tdm_matrices_zero = (STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_zero @ STATES[:, :, :])).real
+
 
 dipole_op_neg = calculate.dipole(N_MAX,I1,I2,1,-1)
 tdm_matrices_neg = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op_neg @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
+all_tdm_matrices_neg = (STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_neg @ STATES[:, :, :])).real
+
+CONSIDERED_COUPLINGS = [tdm_matrices_zero,tdm_matrices_pos,tdm_matrices_neg]
+COUPLINGS = [all_tdm_matrices_zero,all_tdm_matrices_pos,all_tdm_matrices_neg]
+
+
 
 # %%
 gs_kw = dict(width_ratios=[1, 1.5], height_ratios=[1, 1])
@@ -655,11 +723,21 @@ fig.savefig('../images/bad-numeric.pdf')
 
 # %% [markdown] tags=[]
 """
-# Equivelent single rabi
+# Optimising single transfer
 """
 
 # %%
-fig,(ax,axr) = plt.subplots(1,2,figsize=(6,2.8))
+fig,(axl,axm,axr) = plt.subplots(1,3,figsize=(6,3),constrained_layout=True,sharex=True)
+
+i=0
+averages = []
+intended_state_label = (1,4,5)
+intended_state_considered_index = CONSIDERED_STATE_LABELS.index(intended_state_label)
+
+axl.set_xlim(0, B_MAX*GAUSS)
+# for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
+#     axl.plot(B*GAUSS,(ENERGIES[:, real_index] - ENERGIES[:, INITIAL_STATE_POSITION]) / scipy.constants.h,c=STATE_CMAP[sub_index])
+    
 i=0
 averages = []
 for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
@@ -668,9 +746,39 @@ for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
     g = np.abs(couplings[:, initial_state_considered_index, sub_index]/couplings[:, initial_state_considered_index, intended_state_considered_index])
     this_colour = STATE_CMAP[sub_index]
     # Detuning plot levels
+    k = ((ENERGIES[:, real_index] - ENERGIES[:, INITIAL_STATE_POSITION]) / scipy.constants.h)
+    axl.plot(B * GAUSS, k, color='k', alpha=0.2, linewidth=0.5, zorder=3)
+    axl.scatter(B * GAUSS, k, color=this_colour, edgecolors=None, alpha=absg, s=absg ** 1.8 * 1000, zorder=2)
+    # average = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
+    # if sub_index == intended_state_considered_index:
+    #     continue
+    # averages.append(average)
+    # axr.plot(B * GAUSS, -np.log10(1-average+1e-8), color=this_colour, alpha=1, linewidth=1)
+    
+
+axm.set_ylim(0,8)    
+for sub_index, real_label in enumerate(ACCESSIBLE_STATE_LABELS):#ACCESSIBLE_STATE_LABELS):
+    efficiency = []
+    for bi in range(B_STEPS):
+        efficiency.append(transfer_efficiency(INITIAL_STATE_LABEL,real_label,bi))
+    efficiency = np.array(efficiency)
+    this_colour = STATE_CMAP[sub_index]
+    axm.plot(B * GAUSS, -np.log10(1-efficiency+1e-8), color=this_colour, alpha=1, linewidth=1)
+    
+
+
+
+
+print(intended_state_considered_index)
+for sub_index, real_index in enumerate(ACCESSIBLE_STATE_POSITIONS):
+    sub_index += 1
+    absg=np.abs(couplings[:, initial_state_considered_index, sub_index])
+    g = np.abs(couplings[:, initial_state_considered_index, sub_index]/couplings[:, initial_state_considered_index, intended_state_considered_index])
+    this_colour = STATE_CMAP[sub_index]
+    # Detuning plot levels
     k = ((ENERGIES[:, real_index] - ENERGIES[:, intended_state_real_index]) / scipy.constants.h) / (1/PULSE_TIME)
-    ax.plot(B * GAUSS, k, color='k', alpha=0.2, linewidth=0.5, zorder=3)
-    ax.scatter(B * GAUSS, k, color=this_colour, edgecolors=None, alpha=absg, s=absg ** 1.8 * 1000, zorder=2)
+    # axr.plot(B * GAUSS, k, color='k', alpha=0.2, linewidth=0.5, zorder=3)
+    # axr.scatter(B * GAUSS, k, color=this_colour, edgecolors=None, alpha=absg, s=absg ** 1.8 * 1000, zorder=2)
     average = ((1 + g**2)**2 + 8*(-1 + 2*g**2)*k**2 + 16*k**4) / ((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
     if sub_index == intended_state_considered_index:
         continue
@@ -681,19 +789,19 @@ averages = np.array(averages)
 minimum_transfer = np.prod(averages,0)
 axr.plot(B * GAUSS, -np.log10(1-minimum_transfer+1e-8), color='black', alpha=1, linewidth=1, linestyle='dashed')
     
-#axr.set_ylim(0,1.1)
-#ax2 = axr.twinx()
 axr.set_ylim(0,8)
-axr.set_ylabel("Transition Fidelity $(-\log_{10}(1-T))$")
-axr.set_xlabel("Magnetic Field $B_z$ (G)")
-#ax2.set_yticks(np.linspace(0,8,9),100*(1-np.logspace(0,-8,9)))
+# #ax2 = axr.twinx()
+# axr.set_ylim(0,8)
+# axr.set_ylabel("Transition Fidelity $(-\log_{10}(1-T))$")
+# axr.set_xlabel("Magnetic Field $B_z$ (G)")
+# #ax2.set_yticks(np.linspace(0,8,9),100*(1-np.logspace(0,-8,9)))
 
-ax.set_xlim(0, B_MAX * GAUSS)
-axr.set_xlim(0, B_MAX * GAUSS)
-ax.set_xlabel("Magnetic Field $B_z$ (G)")
-ax.set_ylabel("Detuning $(\Omega)$")
+# ax.set_xlim(0, B_MAX * GAUSS)
+# axr.set_xlim(0, B_MAX * GAUSS)
+# ax.set_xlabel("Magnetic Field $B_z$ (G)")
+# ax.set_ylabel("Detuning $(\Omega)$")
 
-fig.savefig('../images/bad-transfer-fidelities.pdf')
+# fig.savefig('../images/bad-transfer-fidelities.pdf')
 
 # %% [markdown]
 """

@@ -196,7 +196,7 @@ ax_r.set_ylabel(r'$\pi_2$')
 """
 
 # %%
-example_points = [(1,0.2,3),(0.1,1,3),(1,4,3),(0.5,0.2,10)]
+example_points = [(1,0.2,3),(0.1,1,3),(1,4,3),(0.5,0.02,80)]
 
 # %%
 fig, axs = plt.subplots(2,2,figsize=(6,4.5))

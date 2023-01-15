@@ -41,12 +41,11 @@ from functools import partial
 
 import itertools
 
-plt.rcParams["text.usetex"] = True
+#plt.rcParams["text.usetex"] = True
 plt.rcParams["font.family"] = 'sans-serif'
 plt.rcParams["figure.autolayout"] = True
 plt.rcParams['figure.figsize'] = (4, 3.5)
 plt.rcParams['figure.dpi'] = 200
-plt.rc('text.latex', preamble=r'\usepackage[T1]{fontenc}\usepackage{cmbright}\usepackage{mathtools}')
 
 # %matplotlib widget
 # %config InlineBackend.figure_format = 'retina'
@@ -69,12 +68,12 @@ E = 0 #V/m
 
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
-B_MAX = 600 / GAUSS # T
-B_STEPS = 300
+B_MAX = 400 / GAUSS # T
+B_STEPS = 400
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
-PULSE_TIME = 100 * 1e-6 # s
+PULSE_TIME = 100e-6 # s
 
 def btoi(b):
     return (b-B_MIN)/B_STEP_SIZE
@@ -132,8 +131,8 @@ def label_to_state_no(N,MF,k):
 
 def state_no_to_uncoupled_label(state_no):
     i=0
-    I1d = round(2*I1)
-    I2d = round(2*I2)
+    I1d = int(I1*2)
+    I2d = int(I2*2)
     for n in range(0, N_MAX + 1):
         for mn in range(n,-(n+1),-1):
             for mi1 in range(I1d,-I1d-1,-2):
@@ -141,40 +140,8 @@ def state_no_to_uncoupled_label(state_no):
                     if i == state_no:
                         return (n,mn,mi1/2,mi2/2)
                     i+=1
-
-
-# %%
-def label_degeneracy(N,MF):
-    # Want number of ways of having
-    # MF = MN + (M_I1 + M_I2) # NP-Hard Problem SSP (Subset Sum)
-    d=0
-    I1d=round(2*I1)
-    I2d=round(2*I2)
-    for MN in range(-N,N+1):
-        for M_I1d in range(-I1d,I1d+1,2):
-            for M_I2d in range(-I2d,I2d+1,2):
-                if 2*MN+M_I1d+M_I2d == 2*MF:
-                    d+=1
-    return d
-
-
-# %%
-print(label_degeneracy(2,3))
-print(label_degeneracy(2,20))
-print(label_to_state_no(*(2,-3,13)))
-print(label_to_state_no(*(2,-3,14)))
-
-
-# %%
-def reachable_above_from(N,MF):
-    sigma_plus_reachable = [(N+1,MF-1,i) for i in range(label_degeneracy(N+1,MF-1))]
-    pi_reachable = [(N+1,MF,i) for i in range(label_degeneracy(N+1,MF))]
-    sigma_minus_reachable = [(N+1,MF+1,i) for i in range(label_degeneracy(N+1,MF+1))]
-    return (sigma_plus_reachable + pi_reachable + sigma_minus_reachable)
-
-
-# %%
-reachable_above_from(0,4)
+    
+print(label_to_state_no(*(2, 4, 13)))
 
 
 # %%
@@ -231,9 +198,6 @@ def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
 
 
 # %%
-def fidelity(ts,d=8):
-    return -np.log10(1-ts+10**(-d))
-
 
 # %%
 print(transfer_efficiency((0,5,0),(1,4,1),int(B_STEPS/2)))
@@ -244,7 +208,29 @@ print(transfer_efficiency((1,5,1),(0,5,0),int(B_STEPS/2)))
 print('----')
 print(transfer_efficiency((0,5,0),(1,6,0),int(B_STEPS/2)))
 print(transfer_efficiency((1,6,0),(0,5,0),int(B_STEPS/2)))
-fidelity(0.9998)
+print('---------')
+print(transfer_efficiency((0,4,1),(1,3,1),int(B_STEPS/2)))
+print(transfer_efficiency((1,3,1),(2,2,0),int(B_STEPS/2)))
+print(transfer_efficiency((2,2,0),(1,3,0),int(B_STEPS/2)))
+print(transfer_efficiency((1,3,0),(0,4,1),int(B_STEPS/2)))
+print(transfer_efficiency((0,4,1),(1,3,0),int(B_STEPS/2)))
+print('-----------------')
+# (0,4,1),(1,4,5),(2,4,0),(1,4,0)
+print(transfer_efficiency((0,4,1),(1,4,5),int(65)))
+print(transfer_efficiency((1,4,5),(2,4,2),int(65)))
+print(transfer_efficiency((2,4,2),(1,4,1),int(65)))
+print(transfer_efficiency((1,4,1),(0,4,1),int(65)))
+
+# %%
+print(transfer_efficiency((0,5,0),(1,6,0),int(B_STEPS-1)))
+
+eff = []
+for bi in range(B_STEPS):
+    eff.append(transfer_efficiency((0,5,0),(1,5,2),bi))
+eff=np.array(eff)
+fig,ax=plt.subplots()
+ax.set_ylim(0,1.1)
+ax.plot(B*GAUSS,eff)
 
 # %% [markdown]
 """
@@ -273,185 +259,43 @@ STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,len(CONSIDERED_STATE_POSITIONS)
 fig, (ax1,ax2) = plt.subplots(2,1,sharex=True)
 muN = scipy.constants.physical_constants['nuclear magneton'][0]
 
-ax1.plot(B*GAUSS,MAGNETIC_MOMENTS[:,128:]/muN, color='grey', alpha=0.3,linewidth=0.5,zorder=0);
+ax1.plot(B*GAUSS,MAGNETIC_MOMENTS[:,180:]/muN, color='grey', alpha=0.3,linewidth=0.5,zorder=0);
+ax1.set_xlim(0,200)
 ax1.set_ylabel("Magnetic Moment $\mu$ $(\mu_N)$")
+ax1.set_xlabel("Magnetic Field $B_z$ (G)")
 
 ax2.plot(B*GAUSS,ENERGIES[:,128:]/muN, color='grey', alpha=0.3,linewidth=0.5,zorder=0);
 ax2.set_xlim(0,200)
 ax2.set_ylabel("Energy")
 ax2.set_xlabel("Magnetic Field $B_z$ (G)")
 
-# %% [markdown]
-"""
-# Optimise 2-level
-"""
 
-# %%
-polarisation = None             # Polarisation: -1,0,1,None
-initial_state_label = (0,4,1)   # Which state to go from
-focus_state_label = (1,5,0)     # Which state to highlight
-desired_pulse_time = 500*1e-6   # What desired pulse time (s)
-dynamic_range = 8               # What Dynamic range to use for Fidelity
-#################################
-
-if polarisation is None:
-    coupling = COUPLINGS[0]+COUPLINGS[1]+COUPLINGS[-1]
-    polarisation_text = '\pi/\sigma_\pm'
-else:
-    coupling = COUPLINGS[polarisation]
-    polarisation_text = ['\pi','\sigma_+','\pi/\sigma_\pm','\sigma_-'][polarisation]
-
-initial_state_index = label_to_state_no(*initial_state_label)
-focus_state_index = label_to_state_no(*focus_state_label)
-
-accessible_state_labels = reachable_above_from(initial_state_label[0],initial_state_label[1])
-accessible_state_indices = [label_to_state_no(*label) for label in accessible_state_labels]
-state_cmap = plt.cm.gist_rainbow(np.linspace(0,1,len(accessible_state_labels)))
-
-fig, (axl, axm, axr) = plt.subplots(1,3,sharex=True,figsize=(6,3),constrained_layout=True)
-
-fig.suptitle(r'$|{},{}\rangle_{} \xrightarrow{{{}}} |1,M_F\rangle_i $'.format(*initial_state_label, polarisation_text))
-
-axl.set_xlim(0,B_MAX*GAUSS)
-
-axm.set_ylim(-0.1,dynamic_range+0.1)
-axr.set_ylim(-0.1,dynamic_range+0.1)
-
-axl.set_ylabel("Detuning (MHz) - 980MHz")
-axm.set_ylabel("Fidelity")
-axr.set_ylabel("Fidelity")
-fig.supxlabel('Magnetic Field $B_z$ (G)')
-
-# Left zeeman plot
-for i, state_index in enumerate(accessible_state_indices):
-    this_colour = state_cmap[i]
-    det = ((ENERGIES[:, state_index] - ENERGIES[:, initial_state_index]) / scipy.constants.h)
-    absg = np.abs(coupling[:, initial_state_index, state_index])
-    axl.scatter(B*GAUSS, det/1e6-980, color=this_colour, edgecolors=None, alpha=absg**0.5*0.5, s=absg ** 2 * 100, zorder=2)    
-    axl.plot(B*GAUSS,det/1e6-980,color='k',linewidth=0.5,zorder=3,alpha=0.3)
-    
-# Middle single state plot
-transfered = np.ones(B_STEPS)
-for off_res_index in range(N_STATES):
-    if off_res_index == initial_state_index or off_res_index == focus_state_index:
-        continue
-    this_colour=state_cmap[accessible_state_indices.index(off_res_index)] if off_res_index in accessible_state_indices else 'black'
-    for (a,b) in [(initial_state_index,focus_state_index),(focus_state_index,initial_state_index)]:
-        k = np.abs((ENERGIES[:, off_res_index] - ENERGIES[:, b]) * desired_pulse_time / scipy.constants.h)
-        g = np.abs(coupling[:, a, off_res_index]/coupling[:, a, b])
-        sub_transfered = twice_average_fidelity(k,g)
-        axm.plot(B*GAUSS,fidelity(sub_transfered, dynamic_range),c=this_colour,linestyle='dashed',linewidth=1)
-        transfered *= sub_transfered
-axm.plot(B*GAUSS,fidelity(transfered, dynamic_range),c=state_cmap[accessible_state_indices.index(focus_state_index)])
-    
-
-# # Right all state plots
-for i, focus_state_index in enumerate(accessible_state_indices):
-    this_colour = state_cmap[i]
-    transfered = np.ones(B_STEPS)
-    for off_res_index in range(N_STATES):
-        if off_res_index == initial_state_index or off_res_index == focus_state_index:
-            continue
-        for (a,b) in [(initial_state_index,focus_state_index),(focus_state_index,initial_state_index)]:
-            k = np.abs((ENERGIES[:, off_res_index] - ENERGIES[:, b]) * desired_pulse_time / scipy.constants.h)
-            g = np.abs(coupling[:, a, off_res_index]/coupling[:, a, b])
-            sub_transfered = twice_average_fidelity(k,g)
-            transfered *= sub_transfered
-    axr.plot(B*GAUSS,fidelity(transfered, dynamic_range),c=this_colour)
-
-# %% [markdown]
-"""
-# Optimise 2-level from 0,4,1
-"""
-
-# %%
-P = None
-initial_state_label = (0,4,1)
-initial_state_position = label_to_state_no(*initial_state_label)
-FOCUS_STATE = (1,3,2)
-PULSE_TIME = 500*1e-6
-D_RANGE_EXP = 8
-D_RANGE=1*10**(-D_RANGE_EXP)
-
-if P is None:
-    COUPLING = COUPLINGS[0]+COUPLINGS[1]+COUPLINGS[-1]
-    P_TEXT = '\pi/\sigma_\pm'
-else:
-    COUPLING = COUPLINGS[P]
-    P_TEXT = ['\pi','\sigma_+','\pi/\sigma_\pm','\sigma_-'][P]
-
-
-FOCUS_STATE_INDEX = label_to_state_no(*FOCUS_STATE)
-
-
-fig, (axl, axm, axr) = plt.subplots(1,3,sharex=True,figsize=(6,3),constrained_layout=True)
-
-fig.suptitle(r'$|{},{}\rangle_{} \xrightarrow{{{}}} |1,M_F\rangle_i $'.format(*initial_state_label,P_TEXT))
-
-axl.set_xlim(0,B_MAX*GAUSS)
-
-axl.set_ylim(-0.5,1.5)
-axm.set_ylim(0,D_RANGE_EXP)
-axr.set_ylim(0,D_RANGE_EXP)
-
-axl.set_ylabel("Detuning (MHz) - 980MHz")
-axm.set_ylabel("Fidelity")
-axr.set_ylabel("Fidelity")
-fig.supxlabel('Magnetic Field $B_z$ (G)')
-
-# Left zeeman plot
-for state_position in range(N_STATES):
-    # i+=1
-    # this_colour = STATE_CMAP[i]
-    det = ((ENERGIES[:, state_position] - ENERGIES[:, initial_state_position]) / scipy.constants.h)
-    absg = np.abs(COUPLING[:, initial_state_position, state_position])
-    axl.scatter(B*GAUSS, det/1e6-980, edgecolors=None, alpha=absg**2, s=absg ** 2 * 50, zorder=2)    
-    axl.plot(B*GAUSS,det/1e6-980,color='k',linewidth=0.5,zorder=3,alpha=0.3)
-    
-# Middle single state plot
-transfered = np.ones(B_STEPS)
-
-state1i = initial_state_position
-state2i = FOCUS_STATE_INDEX
-
-
-for state3i in range(N_STATES):
-    if state3i == state1i or state3i == state2i:
-        continue
-    # this_colour=STATE_CMAP[CONSIDERED_STATE_POSITIONS.index(state3i)] if state3i in CONSIDERED_STATE_POSITIONS else 'black'
-    for (a,b) in [(state1i,state2i),(state2i,state1i)]:
-        g = np.abs(COUPLING[:, a, state3i]/COUPLING[:, a, b])
-        k = np.abs(((ENERGIES[:, state3i] - ENERGIES[:, b]) / scipy.constants.h) / (1/PULSE_TIME))
-        sub_transfered = twice_average_fidelity(k,g)
-        axm.plot(B*GAUSS,-np.log10(1-sub_transfered+D_RANGE),linestyle='dashed',linewidth=1)
-        transfered *= sub_transfered
-
-axm.plot(B*GAUSS,-np.log10(1-transfered+D_RANGE))
-    
-
-# # Right all state plots
-for state_position in range(N_STATES):
-    # this_colour=STATE_CMAP[i+1]
-    transfered = np.ones(B_STEPS)
-
-    state1i = initial_state_position
-    state2i = state_position
-
-    for state3i in range(N_STATES):
-        if state3i == state1i or state3i == state2i:
-            continue
-        for (a,b) in [(state1i,state2i),(state2i,state1i)]:
-            g = np.abs(COUPLING[:, a, state3i]/COUPLING[:, a, b])
-            k = np.abs(((ENERGIES[:, state3i] - ENERGIES[:, b]) / scipy.constants.h) / (1/PULSE_TIME))
-            sub_transfered = twice_average_fidelity(k,g)
-            transfered *= sub_transfered
-
-    axr.plot(B*GAUSS,-np.log10(1-transfered+D_RANGE))
 
 # %% [markdown]
 """
 # Find Coindidences
 """
+
+
+# %%
+def label_degeneracy(N,MF):
+    # Want number of ways of having
+    # MF = MN + (M_I1 + M_I2) # NP-Hard Problem SSP (Subset Sum)
+    d=0
+    for MN in range(-N,N+1):
+        for M_I1 in range(-int(I1+0.5),int(I1+0.5)+1):
+            M_I1 = M_I1-0.5
+            for M_I2 in range(-int(I2+0.5),int(I2+0.5)+1):
+                M_I2 = M_I2-0.5
+                if MN+M_I1+M_I2 == MF:
+                    d+=1
+    return d
+
+print(label_degeneracy(0,5))
+print(label_degeneracy(1,4))
+print(label_degeneracy(1,5))
+print(label_degeneracy(1,6))
+print(label_degeneracy(1,7))
 
 # %% tags=[]
 # Find all possible combinations
@@ -569,7 +413,7 @@ for axh in axs:
 fig.supxlabel( 'Magnetic Field $B_z$ (G)')
 fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
 
-# fig.savefig('../images/magnetic-dipole-coincides.pdf')
+fig.savefig('../images/magnetic-dipole-coincides.pdf')
 
 # %% [markdown]
 """
@@ -743,7 +587,7 @@ chosen_pulse_time = 100000 * 1e-6
 TIME = chosen_pulse_time*3
 
 # Get Angular Frequency Matrix Diagonal for each B
-angular = 1e6*np.array([0, 0.4, 0.42, 1]) # [state]
+angular = 1e6*np.array([0, 0.4, 0.7, 1]) # [state]
 
 coupling = np.array(
 [[ 0, 0.3,  0.25, 0],
@@ -817,8 +661,5 @@ for state_index in range(4):
     ax.plot(times*1e6,probabilities[:,state_index],c=c[i],linewidth=0.5);
     i+=1
 
-
-# %%
-label_degeneracy(1,3)+label_degeneracy(1,4)+label_degeneracy(1,5)
 
 # %%
