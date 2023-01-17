@@ -22,6 +22,7 @@
 # %%
 import numpy as np
 from numpy.linalg import eigh
+from numpy import load
 np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 np.set_printoptions(formatter={'float': lambda x: "{0:0.3e}".format(x)})
 
@@ -71,7 +72,7 @@ E = 0 #V/m
 GAUSS = 1e4 # T
 B_MIN = 0.01 / GAUSS # T
 B_MAX = 600 / GAUSS # T
-B_STEPS = 300
+B_STEPS = 1200
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 
@@ -90,6 +91,9 @@ def itob(i):
 """
 
 # %%
+print(N_STATES)
+
+# %%
 H0,Hz,Hdc,Hac = hamiltonian.build_hamiltonians(N_MAX, Rb87Cs133, zeeman=True, Edc=True, ac=True)
 
 H = H0[..., None]+\
@@ -98,15 +102,19 @@ H = H0[..., None]+\
     Hac[..., None]*I
 H = H.transpose(2,0,1)
 
-ENERGIES_UNSORTED, STATES_UNSORTED = eigh(H)
-N_STATES = len(ENERGIES_UNSORTED[0])
+# ENERGIES_UNSORTED, STATES_UNSORTED = eigh(H)
+N_STATES = len(H[0])
 
 # %%
 # ENERGIES_HALF_SORTED, STATES_HALF_SORTED = calculate.sort_smooth(ENERGIES_UNSORTED,STATES_UNSORTED)
-ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES_UNSORTED, STATES_UNSORTED, N_MAX, Rb87Cs133)
+# ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES_UNSORTED, STATES_UNSORTED, N_MAX, Rb87Cs133)
+ENERGIES = load('../precomputed/energies-600G-1200Steps.npy')
+STATES = load('../precomputed/states-600G-1200Steps.npy')
+LABELS = load('../precomputed/labels-600G-1200Steps.npy')
 
 # %%
-MAGNETIC_MOMENTS = calculate.magnetic_moment(STATES, N_MAX, Rb87Cs133)
+# MAGNETIC_MOMENTS = calculate.magnetic_moment(STATES, N_MAX, Rb87Cs133)
+MAGNETIC_MOMENTS = load('../precomputed/magnetic-moments-600G-1200Steps.npy')
 
 # %%
 dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
@@ -127,9 +135,7 @@ COUPLINGS = [COUPLINGS_ZERO,COUPLINGS_PLUS,COUPLINGS_MINUS]
 
 # %%
 def label_to_state_no(N,MF,k):
-    for i, label in enumerate(LABELS):
-        if label[0] == N and label[1] == MF and label[2] == k:
-            return i
+    return np.where((LABELS[:, 0] == N) & (LABELS[:, 1] == MF) & (LABELS[:, 2] == k))[0][0]
 
 def state_no_to_uncoupled_label(state_no):
     i=0
@@ -208,7 +214,7 @@ def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_tim
     
     g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
     k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-    sub_transfered = maximum_fidelity(k,g)
+    sub_transfered = twice_average_fidelity(k,g)
     
     return sub_transfered
 
@@ -228,7 +234,7 @@ def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
             continue
         g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
         k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-        sub_transfered = maximum_fidelity(k,g)
+        sub_transfered = twice_average_fidelity(k,g)
         transfered *= sub_transfered
         
     return transfered
@@ -413,23 +419,25 @@ for i, focus_state_index in enumerate(accessible_state_indices):
 # two states in N, one in N+-1
 
 possibilities = []
-for N1 in range(0,N_MAX+1):
-    for N2 in [N1-1,N1+1]:
+for N1 in [1]:#range(0,N_MAX+1):
+    for N2 in [0]:#[N1-1,N1+1]:
         if N2 < 0 or N2 > N_MAX:
             continue
         F1 = round(N1+I1+I2)
         F2 = round(N2+I1+I2)
-        for MF1 in [3,4,5]+([6] if N1>0 else []):#range(-F1,F1+1,1):
+        for MF1 in [2,3,4,5]+([6] if N1>0 else []):#range(-F1,F1+1,1):
             for p1 in [-1,0,1]:
                 for p2 in [-1,0,1]:
                     if MF1+p1 > F2 or MF1+p1 < -F2 or MF1+p2 > F2 or MF1+p2 < -F2:
                         continue
                     MF2a = MF1+p1
                     MF2b = MF1+p2
+                    if MF2a < MF2b:
+                        continue
                     for i in range(label_degeneracy(N1,MF1)):
                         for j in range(label_degeneracy(N2,MF2a)):
                             for k in range(label_degeneracy(N2,MF2b)):
-                                if MF2a == MF2b and j == k:
+                                if MF2a == MF2b and j <= k:
                                     continue
                                 possibilities.append([(N1,MF1,i),(N2,MF2a,j),(N2,MF2b,k)])
 possibilities = np.array(possibilities)
@@ -460,7 +468,7 @@ for i,state_posibility in enumerate(possibilities):
 # %%
 # Simulate microwave transfers to find 'fidelity'
 top_fidelities = np.zeros(len(possibilities),dtype=np.double)
-desired_pulse_time = 100 * 1e-6 # microseconds, longer => increased fidelity
+desired_pulse_time = 500 * 1e-6 # microseconds, longer => increased fidelity
 for i, focus_state in enumerate(possibilities):
     at_Bi = best_b_index[i]
     p = 1
@@ -486,7 +494,7 @@ bestest_fidelity = np.max(top_fidelities)
 for i, focus_state in enumerate(possibilities):
     deviation = bestest_deviation/best_deviation[i]
     fidelity = top_fidelities[i]
-    rating[i] = deviation*fidelity
+    rating[i] = deviation*(fidelity>0.1)
 
 order = (-rating).argsort()
 
@@ -501,7 +509,7 @@ ordered_deviations = best_deviation[order]
 i=0
 for axh in axs:
     for ax in axh:
-        state_labels = ordered_states[i+50]
+        state_labels = ordered_states[i]
         state_numbers = np.array([label_to_state_no(*state_label) for state_label in ordered_states[i]])
         ax.set_xlim(0,B_MAX*GAUSS)
         ax.set_ylim(-2,7)
@@ -523,7 +531,61 @@ fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
 
 # fig.savefig('../images/magnetic-dipole-coincides.pdf')
 
+# %% [markdown]
+"""
+# Magnetic moments plot
+"""
+
 # %%
+fig, ax = plt.subplots(figsize=(4,6))
+
+
+ax.set_xlim(0,400)
+ax.set_ylim(6,0)
+ax.set_xlabel('Magnetic Field $B_z$ (G)')
+ax.set_ylabel('Magnetic Moment, $\mu$ $(\mu_N)$')
+
+five_col = [
+'#ff0000',
+'#00ff7f',
+'#00bfff',
+'#0000ff',
+'#ff1493'
+]
+
+states_to_plot = []
+for N in range(0,2):
+    F = round(N + I1 + I2)
+    for MF in range(max(-F,2),min(F+1,7)):
+        for di in range(label_degeneracy(N,MF)):
+            states_to_plot.append((N,MF,di))
+
+for state_label in states_to_plot:
+    lw=1
+    col = five_col[state_label[1]-2]
+    ls = 'solid'
+    if state_label[0] != 0:
+        ls = 'dashed'
+        lw=0.75
+        
+    index = label_to_state_no(*state_label)
+    ax.plot(B*GAUSS, MAGNETIC_MOMENTS[:,index]/muN,linestyle=ls, color=col, alpha=0.65,linewidth=lw);
+    
+
+# find all triplets 
+for i,(la,lb,lc) in enumerate(ordered_states[:100]):
+    if la[0] == 1 and lb[0]==0 and lc[0]==0:
+        if la[1]<=6 and la[1]>=2 and lb[1]<=6 and lb[1]>=2 and lc[1]<=6 and lc[1]>=2:
+            fid = ordered_fidelities[i]
+            dev = ordered_deviations[i]/muN
+            if fid < 0.9 or dev > 0.1:
+                continue
+            x = B[ordered_B[i]]*GAUSS
+            state_indices = np.array([label_to_state_no(*la),label_to_state_no(*lb),label_to_state_no(*lc)])
+            y = np.sum(np.abs(MAGNETIC_MOMENTS[ordered_B[i],state_indices]))/(3*muN)
+            ax.plot([x],[y], 'o', mfc='none',markersize=2,c='black')
+            ax.text(x+5,y,f'f={fid:.3f},d={dev:.3f}',fontsize=8,va='bottom',ha='left',picker=True)
+            ax.text(x+5,y,r'$|{},{}\rangle_{} |{},{}\rangle_{} |{},{}\rangle_{}$'.format(*la,*lb,*lc),fontsize=8,va='top',ha='left',picker=True)
 
 # %% [markdown]
 """

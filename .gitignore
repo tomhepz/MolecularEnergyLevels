@@ -3,6 +3,7 @@ requirements.txt
 dev-requirements.txt
 .idea/
 animation/
+precomputed/
 
 # General
 .DS_Store
