@@ -69,68 +69,48 @@ N_MAX=2
 I = 0 #W/m^2
 E = 0 #V/m
 
-GAUSS = 1e4 # T
-B_MIN = 0.01 / GAUSS # T
-B_MAX = 600 / GAUSS # T
+B_MIN_GAUSS = 0.01
+B_MAX_GAUSS = 600
 B_STEPS = 1200
 
-B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
+settings_string = f'NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}'
+print(settings_string)
+
+GAUSS = 1e4 # T
+B_MIN = B_MIN_GAUSS / GAUSS # T
+B_MAX = B_MAX_GAUSS / GAUSS # T
 
 PULSE_TIME = 100 * 1e-6 # s
 
-def btoi(b):
-    return (b-B_MIN)/B_STEP_SIZE
-
-def itob(i):
-    return B_STEP_SIZE*i+B_MIN
-
-
-# %% [markdown]
-"""
-# Build and Diagonalise Hamiltonian for many B
-"""
+B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
 # %%
-print(N_STATES)
-
-# %%
-H0,Hz,Hdc,Hac = hamiltonian.build_hamiltonians(N_MAX, Rb87Cs133, zeeman=True, Edc=True, ac=True)
-
-H = H0[..., None]+\
-    Hz[..., None]*B+\
-    Hdc[..., None]*E+\
-    Hac[..., None]*I
-H = H.transpose(2,0,1)
-
-# ENERGIES_UNSORTED, STATES_UNSORTED = eigh(H)
-N_STATES = len(H[0])
-
-# %%
-# ENERGIES_HALF_SORTED, STATES_HALF_SORTED = calculate.sort_smooth(ENERGIES_UNSORTED,STATES_UNSORTED)
-# ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES_UNSORTED, STATES_UNSORTED, N_MAX, Rb87Cs133)
-ENERGIES = load('../precomputed/energies-600G-1200Steps.npy')
-STATES = load('../precomputed/states-600G-1200Steps.npy')
-LABELS = load('../precomputed/labels-600G-1200Steps.npy')
-
-# %%
-# MAGNETIC_MOMENTS = calculate.magnetic_moment(STATES, N_MAX, Rb87Cs133)
-MAGNETIC_MOMENTS = load('../precomputed/magnetic-moments-600G-1200Steps.npy')
-
-# %%
-dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
-dipole_op_minus = calculate.dipole(N_MAX,I1,I2,1,-1)
-dipole_op_plus = calculate.dipole(N_MAX,I1,I2,1,+1)
-
-COUPLINGS_ZERO = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_zero @ STATES[:, :, :])
-COUPLINGS_MINUS = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_minus @ STATES[:, :, :])
-COUPLINGS_PLUS = STATES[:, :, :].conj().transpose(0, 2, 1) @ (dipole_op_plus @ STATES[:, :, :])
-
-COUPLINGS = [COUPLINGS_ZERO,COUPLINGS_PLUS,COUPLINGS_MINUS]
+data = np.load(f'../precomputed/{settings_string}.npz')
+ENERGIES = data['energies']
+N_STATES = len(ENERGIES[0])
+STATES = data['states']
+LABELS=data['labels']
+MAGNETIC_MOMENTS=data['magnetic_moments'] 
+COUPLINGS_ZERO=data['coupling_matrix_zero']
+COUPLINGS_MINUS=data['coupling_matrix_minus']
+COUPLINGS_PLUS=data['coupling_matrix_plus']
+COUPLINGS = COUPLINGS_ZERO+COUPLINGS_MINUS+COUPLINGS_PLUS
+POLARISED_COUPLING = [COUPLINGS_ZERO,COUPLINGS_PLUS,COUPLINGS_MINUS]
+UNPOLARISED_PAIR_FIDELITIES = data['unpolarised_pair_fidelities']
+POLARISED_PAIR_FIDELITIES=data['polarised_pair_fidelities']
 
 # %% [markdown]
 """
 # Helper Functions
 """
+
+
+# %%
+def btoi(b):
+    return (b-B_MIN)/B_STEP_SIZE
+
+def itob(i):
+    return B_STEP_SIZE*i+B_MIN
 
 
 # %%
@@ -204,20 +184,19 @@ def maximum_fidelity(k,g):
 
 
 # %%
-def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
-    state1i = label_to_state_no(*state1_label)
-    state2i = label_to_state_no(*state2_label)
-    state3i = label_to_state_no(*state3_label)
+# def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
+#     state1i = label_to_state_no(*state1_label)
+#     state2i = label_to_state_no(*state2_label)
+#     state3i = label_to_state_no(*state3_label)
     
-    P = state1_label[1] - state2_label[1]
-    COUPLING = COUPLINGS[P]
+#     P = state1_label[1] - state2_label[1]
+#     COUPLING = COUPLINGS[P]
     
-    g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
-    k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-    sub_transfered = twice_average_fidelity(k,g)
+#     g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
+#     k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
+#     sub_transfered = twice_average_fidelity(k,g)
     
-    return sub_transfered
-
+#     return sub_transfered
 
 # %%
 def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
@@ -227,12 +206,12 @@ def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
     state2i = label_to_state_no(*state2_label)
 
     P = (state1_label[1] - state2_label[1])*(state2_label[0] - state1_label[0])
-    COUPLING = COUPLINGS[P]
+    this_coupling = COUPLINGS#[P]
     
     for state3i in range(N_STATES):
         if state3i == state1i or state3i == state2i:
             continue
-        g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
+        g = np.abs(this_coupling[bi, state1i, state3i]/this_coupling[bi, state1i, state2i])
         k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
         sub_transfered = twice_average_fidelity(k,g)
         transfered *= sub_transfered
@@ -297,18 +276,18 @@ ax2.set_xlabel("Magnetic Field $B_z$ (G)")
 """
 
 # %% tags=[]
-polarisation = None               # Polarisation: -1,0,1,None
+polarisation = None             # Polarisation: -1,0,1,None
 initial_state_label = (0,4,1)   # Which state to go from
-focus_state_label = (1,5,0)     # Which state to highlight
+focus_state_label = (1,3,2)     # Which state to highlight
 desired_pulse_time = 100*1e-6   # What desired pulse time (s)
 dynamic_range = 8               # What Dynamic range to use for Fidelity
 #################################
 
 if polarisation is None:
-    coupling = COUPLINGS[0]+COUPLINGS[1]+COUPLINGS[-1]
+    coupling = COUPLINGS
     polarisation_text = '\pi/\sigma_\pm'
 else:
-    coupling = COUPLINGS[polarisation]
+    coupling = POLARISED_COUPLING[polarisation]
     polarisation_text = ['\pi','\sigma_+','\pi/\sigma_\pm','\sigma_-'][polarisation]
 
 initial_state_index = label_to_state_no(*initial_state_label)
@@ -318,7 +297,7 @@ accessible_state_labels = reachable_above_from(initial_state_label[0],initial_st
 accessible_state_indices = [label_to_state_no(*label) for label in accessible_state_labels]
 state_cmap = plt.cm.gist_rainbow(np.linspace(0,1,len(accessible_state_labels)))
 
-fig = plt.figure(constrained_layout=True,figsize=(6,6))
+fig = plt.figure(constrained_layout=True,figsize=(6,4))
 
 gs = GridSpec(2, 3, figure=fig)
 axl = fig.add_subplot(gs[0, 0])
@@ -345,7 +324,7 @@ for i, state_index in enumerate(accessible_state_indices):
     this_colour = state_cmap[i]
     det = ((ENERGIES[:, state_index] - ENERGIES[:, initial_state_index]) / scipy.constants.h)
     absg = np.abs(coupling[:, initial_state_index, state_index])
-    axl.scatter(B*GAUSS, det/1e6-980, color=this_colour, edgecolors=None, alpha=absg**0.5*0.5, s=absg ** 2 * 100, zorder=2)    
+    axl.scatter(B[::10]*GAUSS, det[::10]/1e6-980, color=this_colour, edgecolors=None, alpha=absg[::10]**0.5*0.5, s=absg[::10] ** 2 * 100, zorder=2)    
     axl.plot(B*GAUSS,det/1e6-980,color='k',linewidth=0.5,zorder=3,alpha=0.3)
     
 # Middle single state plot
@@ -361,6 +340,7 @@ for off_res_index in range(N_STATES):
         axm.plot(B*GAUSS,fidelity(sub_transfered, dynamic_range),c=this_colour,linestyle='dashed',linewidth=1)
         transfered *= sub_transfered
 axm.plot(B*GAUSS,fidelity(transfered, dynamic_range),c=state_cmap[accessible_state_indices.index(focus_state_index)])
+print(transfered[30])
     
 
 # # Right all state plots
@@ -382,7 +362,7 @@ for i, focus_state_index in enumerate(accessible_state_indices):
 
 axb.set_xlim(0,B_MAX*GAUSS)
 axb.set_ylim(-1,1)
-axb.set_xlabel('Magnetic Field $B_z$ (G)')
+# axb.set_xlabel('Magnetic Field $B_z$ (G)')
 axb.set_ylabel('Magnetic Moment Difference $\Delta$ $(\mu_N)$')
 
 
@@ -404,10 +384,7 @@ for i, focus_state_index in enumerate(accessible_state_indices):
         this_transferred_string = f"{this_transferred:.4f}"
         axb.text(text_place,1.02,this_transferred_string,rotation=60,c=this_colour)
 
-
-
-    
-
+fig.savefig('../images/2-level-optimisation.pdf')
 
 # %% [markdown]
 """
@@ -499,7 +476,7 @@ for i, focus_state in enumerate(possibilities):
 order = (-rating).argsort()
 
 # %% tags=[]
-fig, axs = plt.subplots(5,5,figsize=(12,12),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+fig, axs = plt.subplots(3,3,figsize=(6,4),dpi=100,sharex=True,sharey=True,constrained_layout=True)
 
 ordered_states = possibilities[order]
 ordered_B = best_b_index[order]
@@ -521,15 +498,15 @@ for axh in axs:
         print("f",fidelity,"bi",ordered_B[i])
         max_dev = np.abs(ordered_deviations[i]/muN)
         ax.set_title(f'd={max_dev:.4f} f={fidelity:.4f}')
-        ax.text(100,5.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
-        ax.text(40,6.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
-        ax.text(160,6.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
+        ax.text(400,0.3,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
+        ax.text(330,-1.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
+        ax.text(470,-1.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
         i+=1
 
 fig.supxlabel( 'Magnetic Field $B_z$ (G)')
 fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
 
-# fig.savefig('../images/magnetic-dipole-coincides.pdf')
+fig.savefig('../images/magnetic-dipole-coincides-storage-qubit.pdf')
 
 # %% [markdown]
 """
@@ -578,7 +555,7 @@ for i,(la,lb,lc) in enumerate(ordered_states[:100]):
         if la[1]<=6 and la[1]>=2 and lb[1]<=6 and lb[1]>=2 and lc[1]<=6 and lc[1]>=2:
             fid = ordered_fidelities[i]
             dev = ordered_deviations[i]/muN
-            if fid < 0.9 or dev > 0.1:
+            if fid < 0.94 or dev > 0.1:
                 continue
             x = B[ordered_B[i]]*GAUSS
             state_indices = np.array([label_to_state_no(*la),label_to_state_no(*lb),label_to_state_no(*lc)])
@@ -586,6 +563,8 @@ for i,(la,lb,lc) in enumerate(ordered_states[:100]):
             ax.plot([x],[y], 'o', mfc='none',markersize=2,c='black')
             ax.text(x+5,y,f'f={fid:.3f},d={dev:.3f}',fontsize=8,va='bottom',ha='left',picker=True)
             ax.text(x+5,y,r'$|{},{}\rangle_{} |{},{}\rangle_{} |{},{}\rangle_{}$'.format(*la,*lb,*lc),fontsize=8,va='top',ha='left',picker=True)
+
+fig.savefig('../images/3-level-qubit-all-coincidences.pdf')
 
 # %% [markdown]
 """
@@ -646,7 +625,7 @@ for i,state_posibility in enumerate(states):
 # %%
 # Simulate microwave transfers to find 'fidelity'
 top_fidelities = np.zeros(len(states),dtype=np.double)
-desired_pulse_time = 5000 * 1e-6 # microseconds, longer => increased fidelity
+desired_pulse_time = 500 * 1e-6 # microseconds, longer => increased fidelity
 for i, focus_state in enumerate(states):
     at_Bi = best_b_index[i]
     p = 1
@@ -672,12 +651,12 @@ bestest_fidelity = np.max(top_fidelities)
 for i, focus_state in enumerate(states):
     deviation = bestest_deviation/best_deviation[i]
     fidelity = top_fidelities[i]
-    rating[i] = deviation#*fidelity
+    rating[i] = deviation*(fidelity)
 
 order = (-rating).argsort()
 
 # %% tags=[]
-fig, axs = plt.subplots(5,5,figsize=(12,12),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+fig, axs = plt.subplots(3,3,figsize=(6,4),dpi=100,sharex=True,sharey=True,constrained_layout=True)
 
 ordered_states = states[order]
 ordered_B = best_b_index[order]
@@ -691,24 +670,24 @@ for axh in axs:
         state_numbers = np.array([label_to_state_no(*state_label) for state_label in ordered_states[i]])
         ax.set_xlim(0,B_MAX*GAUSS)
         ax.set_ylim(2,6)
-        ax.set_xticks([0, 100, 200, 300, 400])
-        ax.set_yticks([2, 4, 6])
+        # ax.set_xticks([0, 100, 200, 300, 400])
+        # ax.set_yticks([2, 4, 6])
         ax.plot(B*GAUSS,MAGNETIC_MOMENTS[:,state_numbers]/muN, alpha=1,linewidth=1.5,zorder=1);
         ax.axvline(x=min(B[ordered_B[i]]*GAUSS,B_MAX*GAUSS*0.98), dashes=(3, 2), color='k', linewidth=1.5,alpha=0.3,zorder=0,ymax=0.65)
         fidelity = ordered_fidelities[i]
         print("f",fidelity,"bi",ordered_B[i])
         max_dev = np.abs(ordered_deviations[i]/muN)
         ax.set_title(f'd={max_dev:.4f} f={fidelity:.4f}')
-        ax.text(60,4.8,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
-        ax.text(115,5.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
-        ax.text(60,5.6,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
-        ax.text(5,5.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[3])))
+        ax.text(350,4.2,r'$|{},{}\rangle_{}$'.format(*(state_labels[0])))
+        ax.text(450,4.8,r'$|{},{}\rangle_{}$'.format(*(state_labels[1])))
+        ax.text(350,5.4,r'$|{},{}\rangle_{}$'.format(*(state_labels[2])))
+        ax.text(250,4.8,r'$|{},{}\rangle_{}$'.format(*(state_labels[3])))
         i+=1
 
 fig.supxlabel( 'Magnetic Field $B_z$ (G)')
 fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
 
-# fig.savefig('../images/magnetic-dipole-coincides.pdf')
+fig.savefig('../images/4-loop-magnetic-dipole-coincides.pdf')
 
 # %% [markdown]
 """

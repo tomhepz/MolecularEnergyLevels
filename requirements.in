@@ -8,3 +8,4 @@ jupytext
 jupyterlab
 ipympl
 mpl_interactions[jupyter]
+tqdm
