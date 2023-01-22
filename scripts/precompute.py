@@ -53,10 +53,10 @@ N_MAX=2
 I = 0 #W/m^2
 E = 0 #V/m
 
-B_MIN_GAUSS = 0.01
-B_MAX_GAUSS = 600
-B_STEPS = 1200
-PULSE_TIME_US = 100
+B_MIN_GAUSS = 0.001
+B_MAX_GAUSS = 1000
+B_STEPS = 500
+PULSE_TIME_US = 500
 
 settings_string = f'NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
 print(settings_string)
@@ -95,7 +95,7 @@ ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES_HALF_SORTED, STATES_
 # %%
 LABELS=(np.rint(LABELS)).astype(int)
 
-# %% tags=[]
+# %%
 MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->bi', STATES.conj(), -Hz, STATES, optimize='optimal')
 
 # %%
