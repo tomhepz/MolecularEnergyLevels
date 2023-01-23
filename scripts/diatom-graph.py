@@ -168,16 +168,18 @@ N_MAX=2
 I = 0 #W/m^2
 E = 0 #V/m
 
-B_MIN_GAUSS = 0.01
-B_MAX_GAUSS = 600
-B_STEPS = 1200
+B_MIN_GAUSS = 0.001
+B_MAX_GAUSS = 1000
+B_STEPS = 500
+PULSE_TIME_US = 500
 
-settings_string = f'NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}'
+settings_string = f'NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
 print(settings_string)
 
-GAUSS = 1e4 # T
-B_MIN = B_MIN_GAUSS / GAUSS # T
-B_MAX = B_MAX_GAUSS / GAUSS # T
+GAUSS = 1e-4 # T
+B_MIN = B_MIN_GAUSS * GAUSS # T
+B_MAX = B_MAX_GAUSS * GAUSS # T
+PULSE_TIME = PULSE_TIME_US * 1e-6 # s
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
@@ -202,7 +204,7 @@ POLARISED_PAIR_FIDELITIES=data['polarised_pair_fidelities']
 
 # %%
 from scipy.sparse import csgraph
-AT_BI = 362
+AT_BI = 400
 CONSIDERED_MATRIX = UNPOLARISED_PAIR_FIDELITIES[:,:,AT_BI] + UNPOLARISED_PAIR_FIDELITIES[:,:,AT_BI].T
 G2_sparse = csgraph.csgraph_from_dense(-np.log(CONSIDERED_MATRIX), null_value=np.inf) # Expecting div 0 warning, this is fine
 
@@ -287,10 +289,10 @@ fig.savefig('../images/undirected-graph-sample.pdf')
 dist,pred = csgraph.shortest_path(G2_sparse,return_predecessors=True,directed=False)
 
 # %%
-STARTING_LABEL = (0,5,0)
+STARTING_LABEL = (0,4,1)
 STARTING_INDEX = label_to_state_no(*STARTING_LABEL)
 
-TO_GO_LABEL = (1,3,8)
+TO_GO_LABEL = (0,3,0)
 TO_GO_INDEX = label_to_state_no(*TO_GO_LABEL)
 
 print("starting at",STARTING_LABEL, "index", STARTING_INDEX)
@@ -347,7 +349,9 @@ for i in range(N_STATES):
         xend,yend = label_to_position(end_label)
         P = round((end_label[0]-start_label[0])*(end_label[1]-start_label[1]))
         this_pcol = pcol[P]
-        line = ax.plot([xstart,xend],[ystart,yend],lw=cumulative_distance,c=this_pcol,alpha=-np.log10(1-cumulative_distance+1e-4)/4,aa=True)
+        metric = cumulative_distance
+        log_metric = max(0,-np.log10(1-cumulative_distance+1e-4)/4)
+        line = ax.plot([xstart,xend],[ystart,yend],lw=log_metric*2,c=this_pcol,alpha=log_metric,aa=True)
         mean = ((xstart+xend)/2,(ystart+yend)/2)
         if xend<xstart:
             dx = (0.02,0.02*(yend-ystart)/(xend-xstart))
@@ -356,7 +360,7 @@ for i in range(N_STATES):
         ax.annotate('',
             xytext=mean,
             xy=(mean[0]+dx[0], mean[1]+dx[1]),
-            arrowprops=dict(arrowstyle="->", color=this_pcol,alpha=-np.log10(1-cumulative_distance+1e-4)/4),
+            arrowprops=dict(arrowstyle="->", color=this_pcol,alpha=log_metric),
             size=4
         )
         
@@ -371,6 +375,8 @@ ax.text(0,-15,"N=0",ha="center")
 ax.text(1,-15,"N=1",ha="center")
 ax.text(2,-15,"N=2",ha="center")
 # ax.set_xlim(3,15)
-fig.savefig('../images/all-to-all-states-shortest-path.pdf')
+# fig.savefig('../images/all-to-all-states-shortest-path.pdf')
+
+# %%
 
 # %%

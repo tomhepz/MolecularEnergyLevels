@@ -28,14 +28,12 @@
 import numpy as np
 from numpy.linalg import eigh
 from numpy import save, savez, savez_compressed
-np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 
 import diatom.hamiltonian as hamiltonian
 import diatom.calculate as calculate
 from diatom.constants import Rb87Cs133
 
 import scipy.constants
-from scipy.sparse import csgraph
 
 # %% [markdown]
 """
@@ -61,10 +59,10 @@ PULSE_TIME_US = 500
 settings_string = f'NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
 print(settings_string)
 
-GAUSS = 1e4 # T
-B_MIN = B_MIN_GAUSS / GAUSS # T
-B_MAX = B_MAX_GAUSS / GAUSS # T
-PULSE_TIME = PULSE_TIME_US / 1e6
+GAUSS = 1e-4 # T
+B_MIN = B_MIN_GAUSS * GAUSS # T
+B_MAX = B_MAX_GAUSS * GAUSS # T
+PULSE_TIME = PULSE_TIME_US * 1e-6 # s
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
