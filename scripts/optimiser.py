@@ -402,7 +402,7 @@ for bi in range(B_STEPS):
 
 
 # %%
-def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,max_bi=B_STEPS,table_len=9,ignore_small_deviation=False):
+def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,max_bi=B_STEPS,table_len=9,ignore_small_deviation=False,rate_distance=True):
     print(len(possibilities), "combinations to consider")
     possibilities_indices = np.array([np.array([label_to_state_no(*label) for label in possibility]) for possibility in possibilities])
     n_waves = len(possibilities[0]) - 1 # NOTE: assumes paths are the same length
@@ -471,7 +471,9 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         fid_unpol = top_fidelities_unpol[i]
         fid_pol = top_fidelities_pol[i]
         dist_unpol = top_distance[i]
-        rating[i] = fidelity(fid_unpol,d=3)*fidelity(dist_unpol,d=4)*fidelity(fid_pol,d=6)*(dist_unpol>0.95)
+        rating[i] = fidelity(fid_unpol,d=3)*fidelity(fid_pol,d=6)
+        if rate_distance:
+            rating[i] *= fidelity(dist_unpol,d=4)*(dist_unpol>0.95)
         if ignore_small_deviation:
             rating[i] *= dev<0.001
         else:
@@ -510,19 +512,23 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         initial_label = LABELS[current_back]
         predecessor_list = predecessor_fidelity_5[ordered_B[i]] if this_distance_initial_5 else predecessor_fidelity_4[ordered_B[i]]
         path=f"({initial_label[0]},{initial_label[1]},{initial_label[2]})"
+        path = [initial_label]
         while current_back != start_index:
             current_back = predecessor_list[current_back]
-            label = LABELS[current_back]
-            path += f"({label[0]},{label[1]},{label[2]})"
-        states_string = ""
-        for label in state_labels:
-            states_string += f"({label[0]},{label[1]},{label[2]})"
-        data.append([states_string,this_magnetic_field/GAUSS,this_max_dev,this_fidelity_unpol,this_fidelity_pol,this_distance,this_rating,path])
+            path.append(LABELS[current_back])
+        if len(path) < 5:
+            path_string = "<".join([f"({label[0]},{label[1]},{label[2]})" for label in path])
+        else:
+            path_string = "<".join([f"({label[0]},{label[1]},{label[2]})" for label in path[:2]])
+            path_string += f"<..(+{len(path)-4})..<"
+            path_string += "<".join([f"({label[0]},{label[1]},{label[2]})" for label in path[len(path)-2:]])
+        states_string = ",".join([f"({label[0]},{label[1]},{label[2]})" for label in state_labels])
+        data.append([states_string,this_magnetic_field/GAUSS,this_max_dev,this_fidelity_unpol,this_fidelity_pol,this_distance,this_rating,path_string])
     print(tabulate(data, headers=headers,tablefmt="fancy_grid"))
     
     # Show magnetic moments plot
     if plot:
-        fig, axs = plt.subplots(3,3,figsize=(8,5),dpi=100,sharex=True,constrained_layout=True) #,sharey=True
+        fig, axs = plt.subplots(4,4,figsize=(8,8),dpi=100,sharex=True,constrained_layout=True) #,sharey=True
         i=0
         for axh in axs:
             for ax in axh:
@@ -616,7 +622,7 @@ for state_mf in state_mfs:
 states=np.array(states)
 
 # %% tags=[]
-maximise_fid_dev(states,loop=True,table_len=9)
+maximise_fid_dev(states,loop=True,table_len=15,rate_distance=False,max_bi=int(B_STEPS*0.9))
 
 # %% [markdown]
 """
@@ -636,7 +642,7 @@ for N1 in range(0,N_MAX): #[1]:#
 states=np.array(states)
 
 # %% tags=[]
-maximise_fid_dev(states,table_len=9,ignore_small_deviation=True)
+maximise_fid_dev(states,table_len=9,rate_distance=False,ignore_small_deviation=True)
 
 # %% [markdown]
 """
