@@ -28,36 +28,49 @@
 import numpy as np
 from numpy.linalg import eigh
 from numpy import save, savez, savez_compressed
+import ast
 
 import diatom.hamiltonian as hamiltonian
 import diatom.calculate as calculate
-from diatom.constants import Rb87Cs133
+from diatom.constants import *
 
 import scipy.constants
 
 # %% [markdown]
 """
-## Define parameters
+## Defining parameters
+"""
+
+# %%
+MOLECULE_STRING = "Na23Rb87"
+MOLECULE = Na23Rb87
+N_MAX=2
+
+B_MIN_GAUSS = 0.001 #G
+B_MAX_GAUSS = 1000 #G
+B_STEPS = 500
+
+PULSE_TIME_US = 500 #μs
+
+settings_string = f'{MOLECULE_STRING}NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
+
+# %% [markdown]
+"""
+## Computed Constants
 """
 
 # %%
 H_BAR = scipy.constants.hbar
 
-I1 = Rb87Cs133["I1"]
-I2 = Rb87Cs133["I2"]
-D_0 = Rb87Cs133["d0"]
-N_MAX=2
+I1 = MOLECULE["I1"]
+I2 = MOLECULE["I2"]
+I1_D = round(2*I1)
+I2_D = round(2*I2)
 
-I = 0 #W/m^2
-E = 0 #V/m
+D_0 = MOLECULE["d0"]
 
-B_MIN_GAUSS = 0.001
-B_MAX_GAUSS = 1000
-B_STEPS = 500
-PULSE_TIME_US = 500
-
-settings_string = f'NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
-print(settings_string)
+PER_MN = round((2*I1+1)*(2*I2+1))
+N_STATES = PER_MN * (N_MAX+1)**2
 
 GAUSS = 1e-4 # T
 B_MIN = B_MIN_GAUSS * GAUSS # T
@@ -72,13 +85,14 @@ B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T
 """
 
 # %%
-H0,Hz,Hdc,Hac = hamiltonian.build_hamiltonians(N_MAX, Rb87Cs133, zeeman=True, Edc=True, ac=True)
-N_STATES = len(H0)
+H0,Hz,Hdc,Hac = hamiltonian.build_hamiltonians(N_MAX, MOLECULE, zeeman=True, Edc=False, ac=False)
 
-H = H0[..., None]+\
-    Hz[..., None]*B+\
-    Hdc[..., None]*E+\
-    Hac[..., None]*I
+H = (
+    +H0[..., None]
+    +Hz[..., None]*B
+    # +Hdc[..., None]*E
+    # +Hac[..., None]*I
+    )
 H = H.transpose(2,0,1)
 
 # %%
@@ -88,10 +102,22 @@ ENERGIES_UNSORTED, STATES_UNSORTED = eigh(H)
 ENERGIES_HALF_SORTED, STATES_HALF_SORTED = calculate.sort_smooth(ENERGIES_UNSORTED,STATES_UNSORTED)
 
 # %%
-ENERGIES, STATES, LABELS = calculate.sort_by_state(ENERGIES_HALF_SORTED, STATES_HALF_SORTED, N_MAX, Rb87Cs133)
+ENERGIES, STATES, labels_d = calculate.sort_by_state(ENERGIES_HALF_SORTED, STATES_HALF_SORTED, N_MAX, MOLECULE)
 
 # %%
-LABELS=(np.rint(LABELS)).astype(int)
+labels_d[:,1] *= 2 # Double MF to guarantee int
+LABELS_D=(np.rint(labels_d)).astype("int")
+
+# %%
+UNCOUPLED_LABELS_D = []
+
+for n in range(0, N_MAX + 1):
+    for mn in range(n,-(n+1),-1):
+        for mi1d in range(I1_D,-I1_D-1,-2):
+            for mi2d in range(I2_D,-I2_D-1,-2):
+                UNCOUPLED_LABELS_D.append((n,mn,mi1d,mi2d))
+
+UNCOUPLED_LABELS_D = (np.rint(UNCOUPLED_LABELS_D)).astype("int") # TODO: Fix 1/2 int spin
 
 # %%
 MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->bi', STATES.conj(), -Hz, STATES, optimize='optimal')
@@ -119,21 +145,22 @@ def twice_average_fidelity(k,g):
 
 
 # %%
-POLARISED_PAIR_FIDELITIES = np.zeros((N_STATES,N_STATES,B_STEPS))
-UNPOLARISED_PAIR_FIDELITIES = np.zeros((N_STATES,N_STATES,B_STEPS))
+POLARISED_PAIR_FIDELITIES_UT = np.zeros((N_STATES,N_STATES,B_STEPS))
+UNPOLARISED_PAIR_FIDELITIES_UT = np.zeros((N_STATES,N_STATES,B_STEPS))
 
 for Na in range(N_MAX):
     Nb = Na+1
-    lowera = sum(32*(2*N+1) for N in range(Na))
-    uppera = lowera + 32*(2*Na+1)
-    upperb = uppera + 32*(2*Nb+1)
+    lowera = PER_MN * (Na)**2
+    uppera = lowera + PER_MN*(2*Na+1)
+    upperb = uppera + PER_MN*(2*Nb+1)
     for i in range(lowera,uppera):
-        li = LABELS[i,:]
+        li = LABELS_D[i,:]
         for j in range(uppera,upperb):
-            lj = LABELS[j,:]
-            P = round((lj[1]-li[1])*(li[0]-lj[0]))
-            if abs(P) >= 2:
+            lj = LABELS_D[j,:]
+            P = (lj[1]-li[1])*(li[0]-lj[0])
+            if P not in [-2,0,2]:
                 continue
+            P=int(P/2)
 
             couplings_polarised = [COUPLINGS_ZERO,COUPLINGS_PLUS,COUPLINGS_MINUS][P]
 
@@ -157,8 +184,8 @@ for Na in range(N_MAX):
             fidelities_polarised_up[:,np.array([i,j])] = 1
             fidelities_polarised_down[:,np.array([i,j])] = 1
 
-            UNPOLARISED_PAIR_FIDELITIES[i,j,:] = np.prod(fidelities_unpolarised_up,axis=1) * np.prod(fidelities_unpolarised_down,axis=1)
-            POLARISED_PAIR_FIDELITIES[i,j,:] = np.prod(fidelities_polarised_up,axis=1) * np.prod(fidelities_polarised_down,axis=1)
+            UNPOLARISED_PAIR_FIDELITIES_UT[i,j,:] = np.prod(fidelities_unpolarised_up,axis=1) * np.prod(fidelities_unpolarised_down,axis=1)
+            POLARISED_PAIR_FIDELITIES_UT[i,j,:] = np.prod(fidelities_polarised_up,axis=1) * np.prod(fidelities_polarised_down,axis=1)
 
 # %% [markdown]
 """
@@ -167,20 +194,22 @@ for Na in range(N_MAX):
 
 # %%
 np.savez_compressed(f'../precomputed/{settings_string}.npz', 
-                    energies=ENERGIES,
-                    states=STATES, 
-                    labels=LABELS, 
-                    magnetic_moments=MAGNETIC_MOMENTS, 
-                    coupling_matrix_zero = COUPLINGS_ZERO,
-                    coupling_matrix_minus = COUPLINGS_MINUS,
-                    coupling_matrix_plus = COUPLINGS_PLUS,
-                    unpolarised_pair_fidelities = UNPOLARISED_PAIR_FIDELITIES,
-                    polarised_pair_fidelities = POLARISED_PAIR_FIDELITIES
+                    energies = ENERGIES,
+                    states = STATES, 
+                    labels_d = LABELS_D,
+                    uncoupled_labels_d = UNCOUPLED_LABELS_D,
+                    magnetic_moments = MAGNETIC_MOMENTS, 
+                    couplings_zero = COUPLINGS_ZERO,
+                    couplings_minus = COUPLINGS_MINUS,
+                    couplings_plus = COUPLINGS_PLUS,
+                    unpolarised_pair_fidelities_ut = UNPOLARISED_PAIR_FIDELITIES_UT,
+                    polarised_pair_fidelities_ut = POLARISED_PAIR_FIDELITIES_UT
                    )
 
 # %% [markdown]
 """
 # How to load file
+Copy 'Defining Parameters' and 'Computed Constants' section, then load the file from computed `settings_string`.
 """
 
 # %%

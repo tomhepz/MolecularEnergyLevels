@@ -28,7 +28,7 @@ from numpy import load
 
 import diatom.hamiltonian as hamiltonian
 import diatom.calculate as calculate
-from diatom.constants import Rb87Cs133
+from diatom.constants import *
 
 import scipy.constants
 from scipy.sparse import csgraph
@@ -58,27 +58,40 @@ plt.rcParams['figure.dpi'] = 200
 
 # %% [markdown]
 """
-# Define 'global' Constants
+## Defining parameters
+"""
+
+# %%
+MOLECULE_STRING = "Na23K40"
+MOLECULE = Na23K40
+N_MAX=2
+
+B_MIN_GAUSS = 0.001 #G
+B_MAX_GAUSS = 1000 #G
+B_STEPS = 500
+
+PULSE_TIME_US = 500 #μs
+
+settings_string = f'{MOLECULE_STRING}NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
+
+# %% [markdown]
+"""
+## Computed Constants
 """
 
 # %%
 H_BAR = scipy.constants.hbar
+muN = scipy.constants.physical_constants['nuclear magneton'][0]
 
-I1 = Rb87Cs133["I1"]
-I2 = Rb87Cs133["I2"]
-D_0 = Rb87Cs133["d0"]
-N_MAX=2
+I1 = MOLECULE["I1"]
+I2 = MOLECULE["I2"]
+I1_D = round(2*I1)
+I2_D = round(2*I2)
 
-I = 0 #W/m^2
-E = 0 #V/m
+D_0 = MOLECULE["d0"]
 
-B_MIN_GAUSS = 0.001
-B_MAX_GAUSS = 1000
-B_STEPS = 500
-PULSE_TIME_US = 500
-
-settings_string = f'NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
-print(settings_string)
+PER_MN = round((2*I1+1)*(2*I2+1))
+N_STATES = PER_MN * (N_MAX+1)**2
 
 GAUSS = 1e-4 # T
 B_MIN = B_MIN_GAUSS * GAUSS # T
@@ -87,62 +100,89 @@ PULSE_TIME = PULSE_TIME_US * 1e-6 # s
 
 B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
+# %% [markdown]
+"""
+# Load precomputed results
+"""
+
 # %%
 data = np.load(f'../precomputed/{settings_string}.npz')
+
 ENERGIES = data['energies']
-N_STATES = len(ENERGIES[0])
 STATES = data['states']
-LABELS=data['labels']
+
+LABELS_D=data['labels_d']
+UNCOUPLED_LABELS_D=data['uncoupled_labels_d']
+
 MAGNETIC_MOMENTS=data['magnetic_moments'] 
-COUPLINGS_ZERO=data['coupling_matrix_zero']
-COUPLINGS_MINUS=data['coupling_matrix_minus']
-COUPLINGS_PLUS=data['coupling_matrix_plus']
+
+COUPLINGS_ZERO=data['couplings_zero']
+COUPLINGS_MINUS=data['couplings_minus']
+COUPLINGS_PLUS=data['couplings_plus']
 COUPLINGS = COUPLINGS_ZERO+COUPLINGS_MINUS+COUPLINGS_PLUS
 POLARISED_COUPLING = [COUPLINGS_ZERO,COUPLINGS_PLUS,COUPLINGS_MINUS]
-UNPOLARISED_PAIR_FIDELITIES = data['unpolarised_pair_fidelities']
+
+UNPOLARISED_PAIR_FIDELITIES = data['unpolarised_pair_fidelities_ut']
 UNPOLARISED_PAIR_FIDELITIES = UNPOLARISED_PAIR_FIDELITIES + UNPOLARISED_PAIR_FIDELITIES.transpose(1,0,2)
-POLARISED_PAIR_FIDELITIES=data['polarised_pair_fidelities']
+POLARISED_PAIR_FIDELITIES = data['polarised_pair_fidelities_ut']
 POLARISED_PAIR_FIDELITIES = POLARISED_PAIR_FIDELITIES + POLARISED_PAIR_FIDELITIES.transpose(1,0,2)
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[]
 """
 # Helper Functions
 """
 
 
 # %%
-def label_to_state_no(N,MF,k):
-    return np.where((LABELS[:, 0] == N) & (LABELS[:, 1] == MF) & (LABELS[:, 2] == k))[0][0]
+def label_to_state_no(N,MF_D,k):
+    return np.where((LABELS_D[:, 0] == N) & (LABELS_D[:, 1] == MF_D) & (LABELS_D[:, 2] == k))[0][0]
 
 def state_no_to_uncoupled_label(state_no):
-    i=0
-    I1d = round(2*I1)
-    I2d = round(2*I2)
-    for n in range(0, N_MAX + 1):
-        for mn in range(n,-(n+1),-1):
-            for mi1 in range(I1d,-I1d-1,-2):
-                for mi2 in range(I2d,-I2d-1,-2):
-                    if i == state_no:
-                        return (n,mn,mi1/2,mi2/2)
-                    i+=1
+    return UNCOUPLED_LABELS_D[state_no]
 
-def label_degeneracy(N,MF):
+
+# %%
+def label_d_to_string(label_d):
+    n = label_d[0]
+    mf_d = label_d[1]
+    mf_frac = mf_d%2
+    i = label_d[2]
+    if mf_frac == 0:
+        return f"({n},{mf_d//2},{i})"
+    else:
+        mf_whole= (mf_d - np.sign(mf_d))//2
+        return f"({n},{mf_whole}.5,{i})"
+
+def label_d_to_latex_string(label_d):
+    n = label_d[0]
+    mf_d = label_d[1]
+    mf_frac = mf_d%2
+    i = label_d[2]
+    if mf_frac == 0:
+        return r'$|{},{}\rangle_{{{}}}$'.format(n,mf_d//2,i)
+    else:
+        mf_whole= (mf_d - np.sign(mf_d))//2
+        return r'$|{},{}\frac{{1}}{{2}}\rangle_{{{}}}$'.format(n,mf_whole,i)
+
+
+# %%
+def label_degeneracy(N,MF_D):
     # Want number of ways of having
     # MF = MN + (M_I1 + M_I2) # NP-Hard Problem SSP (Subset Sum)
     d=0
-    I1d=round(2*I1)
-    I2d=round(2*I2)
     for MN in range(-N,N+1):
-        for M_I1d in range(-I1d,I1d+1,2):
-            for M_I2d in range(-I2d,I2d+1,2):
-                if 2*MN+M_I1d+M_I2d == 2*MF:
+        for M_I1_D in range(-I1_D,I1_D+1,2):
+            for M_I2_D in range(-I2_D,I2_D+1,2):
+                if 2*MN+M_I1_D+M_I2_D == MF_D:
                     d+=1
     return d
 
-def reachable_above_from(N,MF):
-    sigma_plus_reachable = [(N+1,MF-1,i) for i in range(label_degeneracy(N+1,MF-1))]
-    pi_reachable = [(N+1,MF,i) for i in range(label_degeneracy(N+1,MF))]
-    sigma_minus_reachable = [(N+1,MF+1,i) for i in range(label_degeneracy(N+1,MF+1))]
+
+# %%
+def reachable_above_from(N,MF_D):
+    sigma_plus_reachable = [(N+1,MF_D-2,i) for i in range(label_degeneracy(N+1,MF_D-2))]
+    pi_reachable = [(N+1,MF_D,i) for i in range(label_degeneracy(N+1,MF_D))]
+    sigma_minus_reachable = [(N+1,MF_D+2,i) for i in range(label_degeneracy(N+1,MF_D+2))]
     return (sigma_plus_reachable + pi_reachable + sigma_minus_reachable)
 
 def twice_average_fidelity(k,g):
@@ -159,42 +199,64 @@ def maximum_fidelity(k,g):
                 )
     return numerator/denominator
 
-def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
-    state1i = label_to_state_no(*state1_label)
-    state2i = label_to_state_no(*state2_label)
-    state3i = label_to_state_no(*state3_label)
+# def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
+#     state1i = label_to_state_no(*state1_label)
+#     state2i = label_to_state_no(*state2_label)
+#     state3i = label_to_state_no(*state3_label)
     
-    P = state1_label[1] - state2_label[1]
-    COUPLING = COUPLINGS[P]
+#     P = state1_label[1] - state2_label[1]
+#     COUPLING = COUPLINGS[P]
     
-    g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
-    k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-    sub_transfered = twice_average_fidelity(k,g)
+#     g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
+#     k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
+#     sub_transfered = twice_average_fidelity(k,g)
     
-    return sub_transfered
+#     return sub_transfered
 
-def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
-    transfered = 1
+# def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
+#     transfered = 1
     
-    state1i = label_to_state_no(*state1_label)
-    state2i = label_to_state_no(*state2_label)
+#     state1i = label_to_state_no(*state1_label)
+#     state2i = label_to_state_no(*state2_label)
 
-    P = (state1_label[1] - state2_label[1])*(state2_label[0] - state1_label[0])
-    this_coupling = COUPLINGS#[P]
+#     P = (state1_label[1] - state2_label[1])*(state2_label[0] - state1_label[0])
+#     this_coupling = COUPLINGS#[P]
     
-    for state3i in range(N_STATES):
-        if state3i == state1i or state3i == state2i:
-            continue
-        g = np.abs(this_coupling[bi, state1i, state3i]/this_coupling[bi, state1i, state2i])
-        k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-        sub_transfered = twice_average_fidelity(k,g)
-        transfered *= sub_transfered
+#     for state3i in range(N_STATES):
+#         if state3i == state1i or state3i == state2i:
+#             continue
+#         g = np.abs(this_coupling[bi, state1i, state3i]/this_coupling[bi, state1i, state2i])
+#         k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
+#         sub_transfered = twice_average_fidelity(k,g)
+#         transfered *= sub_transfered
         
-    return transfered
+#     return transfered
 
 def fidelity(ts,d=8):
     return -np.log10(1-ts+10**(-d))
 
+
+# %%
+INITIAL_STATE_LABELS_D = MOLECULE["StartStates_D"]
+INITIAL_STATE_INDICES = [label_to_state_no(*label_d) for label_d in INITIAL_STATE_LABELS_D]
+N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
+
+# %% [markdown] tags=[]
+"""
+# Zeeman Plot
+"""
+
+# %%
+fig, axs = plt.subplots(3,1,figsize=(5,10))
+
+N=N_MAX
+for ax in axs:
+    for si in range(PER_MN*(N)**2,PER_MN*(N+1)**2):
+        if si in INITIAL_STATE_INDICES:
+            ax.plot(B,ENERGIES[:,si],c='red',lw=0.5, alpha=0.8)
+        else:
+            ax.plot(B,ENERGIES[:,si],c='black',lw=0.5, alpha=0.3)
+    N-=1
 
 # %% [markdown]
 """
@@ -202,11 +264,11 @@ def fidelity(ts,d=8):
 """
 
 # %% tags=[]
-polarisation = 1             # Polarisation: -1,0,1,None
-initial_state_label = (0,4,1)   # Which state to go from
-focus_state_label = (1,4,2)     # Which state to highlight
+polarisation = None             # Polarisation: -1,0,1,None
+initial_state_label_d = INITIAL_STATE_LABELS_D[1]   # Which state to go from
+focus_state_label_d = (1,initial_state_label_d[1],0)     # Which state to highlight
 desired_pulse_time = 100*1e-6   # What desired pulse time (s)
-dynamic_range = 14               # What Dynamic range to use for Fidelity
+dynamic_range = 6               # What Dynamic range to use for Fidelity
 #################################
 
 if polarisation is None:
@@ -216,10 +278,10 @@ else:
     coupling = POLARISED_COUPLING[polarisation]
     polarisation_text = ['\pi','\sigma_+','\pi/\sigma_\pm','\sigma_-'][polarisation]
 
-initial_state_index = label_to_state_no(*initial_state_label)
-focus_state_index = label_to_state_no(*focus_state_label)
+initial_state_index = label_to_state_no(*initial_state_label_d)
+focus_state_index = label_to_state_no(*focus_state_label_d)
 
-accessible_state_labels = reachable_above_from(initial_state_label[0],initial_state_label[1])
+accessible_state_labels = reachable_above_from(initial_state_label_d[0],initial_state_label_d[1])
 accessible_state_indices = [label_to_state_no(*label) for label in accessible_state_labels]
 state_cmap = plt.cm.gist_rainbow(np.linspace(0,1,len(accessible_state_labels)))
 
@@ -231,7 +293,7 @@ axm = fig.add_subplot(gs[0, 1])
 axr = fig.add_subplot(gs[0, 2])
 axb = fig.add_subplot(gs[1, :])
 
-fig.suptitle(r'$|{},{}\rangle_{} \xrightarrow{{{}}} |1,M_F\rangle_i $'.format(*initial_state_label, polarisation_text))
+fig.suptitle(r'$|{},{}\rangle_{} \rightarrow{{{}}}\rightarrow |1,M_F\rangle_i $'.format(*initial_state_label_d, polarisation_text))
 
 axl.set_xlim(0,B_MAX/GAUSS)
 axm.set_xlim(0,B_MAX/GAUSS)
@@ -254,19 +316,19 @@ for i, state_index in enumerate(accessible_state_indices):
     axl.plot(B/GAUSS,det/1e6-980,color='k',linewidth=0.5,zorder=3,alpha=0.3)
     
 # Middle single state plot
-# transfered = np.ones(B_STEPS)
-# for off_res_index in range(N_STATES):
-#     if off_res_index == initial_state_index or off_res_index == focus_state_index:
-#         continue
-#     this_colour=state_cmap[accessible_state_indices.index(off_res_index)] if off_res_index in accessible_state_indices else 'black'
-#     for (a,b) in [(initial_state_index,focus_state_index),(focus_state_index,initial_state_index)]:
-#         k = np.abs((ENERGIES[:, off_res_index] - ENERGIES[:, b]) * desired_pulse_time / scipy.constants.h)
-#         g = np.abs(coupling[:, a, off_res_index]/coupling[:, a, b])
-#         sub_transfered = twice_average_fidelity(k,g)
-#         axm.plot(B/GAUSS,fidelity(sub_transfered, dynamic_range),c=this_colour,linestyle='dashed',linewidth=1)
-#         transfered *= sub_transfered
-# axm.plot(B/GAUSS,fidelity(transfered, dynamic_range),c=state_cmap[accessible_state_indices.index(focus_state_index)])
-# print(transfered[30])
+transfered = np.ones(B_STEPS)
+for off_res_index in range(N_STATES):
+    if off_res_index == initial_state_index or off_res_index == focus_state_index:
+        continue
+    this_colour=state_cmap[accessible_state_indices.index(off_res_index)] if off_res_index in accessible_state_indices else 'black'
+    for (a,b) in [(initial_state_index,focus_state_index),(focus_state_index,initial_state_index)]:
+        k = np.abs((ENERGIES[:, off_res_index] - ENERGIES[:, b]) * desired_pulse_time / scipy.constants.h)
+        g = np.abs(coupling[:, a, off_res_index]/coupling[:, a, b])
+        sub_transfered = twice_average_fidelity(k,g)
+        axm.plot(B/GAUSS,fidelity(sub_transfered, dynamic_range),c=this_colour,linestyle='dashed',linewidth=1)
+        transfered *= sub_transfered
+axm.plot(B/GAUSS,fidelity(transfered, dynamic_range),c=state_cmap[accessible_state_indices.index(focus_state_index)])
+print(transfered[30])
     
 
 # # Right all state plots
@@ -320,7 +382,6 @@ for i, focus_state_index in enumerate(accessible_state_indices):
 # %%
 fig, ax = plt.subplots(figsize=(4,6))
 
-
 ax.set_xlim(0,400)
 ax.set_ylim(6,0)
 ax.set_xlabel('Magnetic Field $B_z$ (G)')
@@ -334,16 +395,19 @@ five_col = [
 '#ff1493'
 ]
 
+MIN_MF_D = 2
+MAX_MF_D = 10
+
 states_to_plot = []
 for N in range(0,2):
-    F = round(N + I1 + I2)
-    for MF in range(max(-F,2),min(F+1,7)):
-        for di in range(label_degeneracy(N,MF)):
-            states_to_plot.append((N,MF,di))
+    Fd = 2*N + I1_D + I2_D
+    for MF_D in range(max(-Fd,MIN_MF_D),min(Fd+1,MAX_MF_D+1),2):
+        for di in range(label_degeneracy(N,MF_D)):
+            states_to_plot.append((N,MF_D,di))
 
 for state_label in states_to_plot:
     lw=1
-    col = five_col[state_label[1]-2]
+    col = 'black'#five_col[int(state_label[1]/2-2)]
     ls = 'solid'
     if state_label[0] != 0:
         ls = 'dashed'
@@ -376,24 +440,16 @@ for state_label in states_to_plot:
 """
 
 # %%
-initial_index_5 = label_to_state_no(0,5,0)
-initial_index_4 = label_to_state_no(0,4,1)
-
-cumulative_fidelity_5 = np.zeros((B_STEPS,N_STATES))
-predecessor_fidelity_5 = np.zeros((B_STEPS,N_STATES),dtype=int)
-cumulative_fidelity_4 = np.zeros((B_STEPS,N_STATES))
-predecessor_fidelity_4 = np.zeros((B_STEPS,N_STATES),dtype=int)
+cumulative_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES))
+predecessor_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES),dtype=int)
 
 for bi in range(B_STEPS):
     considered_matrix = UNPOLARISED_PAIR_FIDELITIES[:,:,bi]
     sparse_graph = csgraph.csgraph_from_dense(-np.log(considered_matrix), null_value=np.inf) # Expecting div 0 warning, this is fine
-    (dist5,dist4),(pred5,pred4) = csgraph.shortest_path(sparse_graph,return_predecessors=True,directed=False,indices=(initial_index_5,initial_index_4))
+    (distances_from_initials),(predecessors_from_initials) = csgraph.shortest_path(sparse_graph,return_predecessors=True,directed=False,indices=INITIAL_STATE_INDICES)
     
-    cumulative_fidelity_5[bi]=dist5
-    cumulative_fidelity_4[bi]=dist4
-    
-    predecessor_fidelity_5[bi]=pred5
-    predecessor_fidelity_4[bi]=pred4
+    cumulative_fidelity_from_initials[bi]=distances_from_initials
+    predecessor_fidelity_from_initials[bi]=predecessors_from_initials
 
 # %% [markdown]
 """
@@ -403,13 +459,14 @@ for bi in range(B_STEPS):
 
 # %%
 def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,max_bi=B_STEPS,table_len=9,ignore_small_deviation=False,rate_distance=True):
-    print(len(possibilities), "combinations to consider")
-    possibilities_indices = np.array([np.array([label_to_state_no(*label) for label in possibility]) for possibility in possibilities])
+    n_comb = len(possibilities)
     n_waves = len(possibilities[0]) - 1 # NOTE: assumes paths are the same length
+    print(n_comb, "combinations to consider")
+    possibilities_indices = np.array([np.array([label_to_state_no(*label) for label in possibility]) for possibility in possibilities])
     
     # Find best B for minimum dipole deviation
-    best_deviation = np.ones((len(possibilities)),dtype=np.double)
-    best_b_index = np.ones((len(possibilities)),dtype=int)
+    best_deviation = np.ones((n_comb),dtype=np.double)
+    best_b_index = np.ones((n_comb),dtype=int)
     for i, desired_indices in enumerate(possibilities_indices):
         all_moments = MAGNETIC_MOMENTS[:max_bi,desired_indices]
         if required_crossing is not None:
@@ -427,8 +484,8 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         best_b_index[i] = min_diff_loc
 
     # Simulate microwave transfers to find fidelity *within structure*
-    top_fidelities_unpol = np.zeros(len(possibilities),dtype=np.double)
-    top_fidelities_pol = np.zeros(len(possibilities),dtype=np.double)
+    top_fidelities_unpol = np.zeros(n_comb,dtype=np.double)
+    top_fidelities_pol = np.zeros(n_comb,dtype=np.double)
     for i, desired_indices in enumerate(possibilities_indices):
         at_Bi = best_b_index[i]
         unpol_p = 1
@@ -442,36 +499,28 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         top_fidelities_unpol[i] = unpol_p
         top_fidelities_pol[i] = pol_p
         
-    # Find path to get there from (0,5,0) or (0,4,1)
-    top_distance = np.zeros(len(possibilities),dtype=np.double)
-    top_distance_start = np.zeros(len(possibilities),dtype=int)
-    top_distance_initial_5 = np.full(len(possibilities), True)
+    # Find path to get there from initial state
+    top_distance = np.zeros(n_comb,dtype=np.double)
+    top_distance_initial_index = np.zeros(n_comb,dtype=int)
+    top_distance_topo_index = np.zeros(n_comb,dtype=int)
     for i, desired_indices in enumerate(possibilities_indices):
         at_Bi = best_b_index[i]
-        best_5 = cumulative_fidelity_5[at_Bi,desired_indices]
-        best_5_index = np.argmin(best_5)
-        best_5_value = best_5[best_5_index]
         
-        best_4 = cumulative_fidelity_4[at_Bi,desired_indices]
-        best_4_index = np.argmin(best_4)
-        best_4_value = best_4[best_4_index]
-
-        if best_5_value > best_4_value: # 4 is best
-            top_distance[i] = np.exp(-best_4_value)
-            top_distance_start[i] = best_4_index
-            top_distance_initial_5[i] = False
-        else: # 5 is best
-            top_distance[i] = np.exp(-best_5_value)
-            top_distance_start[i] = best_5_index
+        possible_distances = cumulative_fidelity_from_initials[at_Bi,:,desired_indices]
+        topo_min_index, start_min_index = np.unravel_index(possible_distances.argmin(), possible_distances.shape)
+        
+        top_distance[i] = np.exp(-possible_distances[topo_min_index,start_min_index])
+        top_distance_initial_index[i] = start_min_index
+        top_distance_topo_index[i] = topo_min_index
 
     # Rank state combinations
-    rating = np.zeros(len(possibilities),dtype=np.double)
-    for i, focus_state in enumerate(possibilities):
+    rating = np.zeros(n_comb,dtype=np.double)
+    for i in range(n_comb):
         dev = best_deviation[i]
         fid_unpol = top_fidelities_unpol[i]
         fid_pol = top_fidelities_pol[i]
         dist_unpol = top_distance[i]
-        rating[i] = fidelity(fid_unpol,d=3)*fidelity(fid_pol,d=6)
+        rating[i] = fidelity(fid_unpol,d=3)*fidelity(fid_pol,d=7)
         if rate_distance:
             rating[i] *= fidelity(dist_unpol,d=4)*(dist_unpol>0.95)
         if ignore_small_deviation:
@@ -488,8 +537,8 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
     ordered_fidelities_unpol = top_fidelities_unpol[order]
     ordered_deviations = best_deviation[order]
     ordered_distances = top_distance[order]
-    ordered_distance_start = top_distance_start[order]
-    ordered_distance_initial_5 = top_distance_initial_5[order]
+    ordered_distance_initial_index = top_distance_initial_index[order]
+    ordered_distance_topo_index = top_distance_topo_index[order]
     ordered_rating = rating[order]
     
     # Create Table
@@ -503,32 +552,32 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         this_fidelity_pol = ordered_fidelities_pol[i]
         this_fidelity_unpol = ordered_fidelities_unpol[i]
         this_distance = ordered_distances[i]
-        this_distance_start = ordered_distance_start[i]
-        this_distance_initial_5 = ordered_distance_initial_5[i]
+        this_distance_initial_index = ordered_distance_initial_index[i]
+        this_distance_topo_index = ordered_distance_topo_index[i]
         this_rating = ordered_rating[i]
         
-        current_back = state_numbers[this_distance_start]
-        start_index = initial_index_5 if this_distance_initial_5 else initial_index_4
-        initial_label = LABELS[current_back]
-        predecessor_list = predecessor_fidelity_5[ordered_B[i]] if this_distance_initial_5 else predecessor_fidelity_4[ordered_B[i]]
+        current_back = state_numbers[this_distance_topo_index]
+        start_index = INITIAL_STATE_INDICES[this_distance_initial_index]
+        initial_label = LABELS_D[current_back]
+        predecessor_list = predecessor_fidelity_from_initials[ordered_B[i], this_distance_initial_index,:]
         path=f"({initial_label[0]},{initial_label[1]},{initial_label[2]})"
         path = [initial_label]
         while current_back != start_index:
             current_back = predecessor_list[current_back]
-            path.append(LABELS[current_back])
+            path.append(LABELS_D[current_back])
         if len(path) < 5:
-            path_string = "<".join([f"({label[0]},{label[1]},{label[2]})" for label in path])
+            path_string = "<".join([label_d_to_string(label) for label in path])
         else:
-            path_string = "<".join([f"({label[0]},{label[1]},{label[2]})" for label in path[:2]])
+            path_string = "<".join([label_d_to_string(label) for label in path[:2]])
             path_string += f"<..(+{len(path)-4})..<"
-            path_string += "<".join([f"({label[0]},{label[1]},{label[2]})" for label in path[len(path)-2:]])
-        states_string = ",".join([f"({label[0]},{label[1]},{label[2]})" for label in state_labels])
+            path_string += "<".join([label_d_to_string(label) for label in path[len(path)-2:]])
+        states_string = ",".join([label_d_to_string(label) for label in state_labels])
         data.append([states_string,this_magnetic_field/GAUSS,this_max_dev,this_fidelity_unpol,this_fidelity_pol,this_distance,this_rating,path_string])
     print(tabulate(data, headers=headers,tablefmt="fancy_grid"))
     
     # Show magnetic moments plot
     if plot:
-        fig, axs = plt.subplots(4,4,figsize=(8,8),dpi=100,sharex=True,constrained_layout=True) #,sharey=True
+        fig, axs = plt.subplots(2,3,figsize=(8,8),dpi=100,sharex=True,constrained_layout=True) #,sharey=True
         i=0
         for axh in axs:
             for ax in axh:
@@ -545,7 +594,7 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
                 max_dev = np.abs(ordered_deviations[i])
                 states_string = ""
                 for si, label in enumerate(state_labels):
-                    states_string += r'$|{},{}\rangle_{{{}}}$'.format(*label)
+                    states_string += label_d_to_latex_string(label)
                 ax.set_title(f'd={max_dev:.4f} f={this_fidelity:.4f} \n {states_string}')
                 i+=1
 
@@ -563,31 +612,31 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
 # two states in N, one in N+-1
 
 possibilities = []
-for N1 in [1]:#range(0,N_MAX+1): #[1]:#
-    for N2 in [2]:#[N1-1,N1+1]: #[0]:#
+for N1 in range(0,N_MAX+1): #[1]:#
+    for N2 in [N1-1,N1+1]: #[0]:#
         if N2 < 0 or N2 > N_MAX:
             continue
-        F1 = round(N1+I1+I2)
-        F2 = round(N2+I1+I2)
-        for MF1 in [2,3,4,5]+([6] if N1>0 else []):#range(-F1,F1+1,1):
+        F1_D = 2*N1+I1_D+I2_D
+        F2_D = 2*N2+I1_D+I2_D
+        for MF1_D in range(-F1_D,F1_D+1,2):#[2,3,4,5]+([6] if N1>0 else []):#range(-F1,F1+1,1):
             for p1 in [-1,0,1]:
                 for p2 in [-1,0,1]:
-                    if MF1+p1 > F2 or MF1+p1 < -F2 or MF1+p2 > F2 or MF1+p2 < -F2:
+                    if MF1_D+2*p1 > F2_D or MF1_D+2*p1 < -F2_D or MF1_D+2*p2 > F2_D or MF1_D+2*p2 < -F2_D:
                         continue
-                    MF2a = MF1+p1
-                    MF2b = MF1+p2
-                    if MF2a < MF2b:
+                    MF2a_D = MF1_D+2*p1
+                    MF2b_D = MF1_D+2*p2
+                    if MF2a_D < MF2b_D:
                         continue
-                    for i in range(label_degeneracy(N1,MF1)):
-                        for j in range(label_degeneracy(N2,MF2a)):
-                            for k in range(label_degeneracy(N2,MF2b)):
-                                if MF2a == MF2b and j <= k:
+                    for i in range(label_degeneracy(N1,MF1_D)):
+                        for j in range(label_degeneracy(N2,MF2a_D)):
+                            for k in range(label_degeneracy(N2,MF2b_D)):
+                                if MF2a_D == MF2b_D and j <= k:
                                     continue
-                                possibilities.append([(N2,MF2a,j),(N1,MF1,i),(N2,MF2b,k)])
-possibilities = np.array(possibilities)
+                                possibilities.append([(N2,MF2a_D,j),(N1,MF1_D,i),(N2,MF2b_D,k)])
+possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities,loop=False,required_crossing=[0,2])
+maximise_fid_dev(possibilities_d[:,:],loop=False,required_crossing=[0,2],rate_distance=True,table_len=6)
 
 # %% [markdown]
 """
@@ -604,10 +653,11 @@ for p1 in [-1,0,1]:
                 if p1+p2+p3+p4 == 0:
                     polarisations.append((p1,p2,p3,p4))
 
-state_mfs = []                    
-for base_mf in range(0,5+1):
+state_mfs = []            
+F1_D = I1_D+I2_D
+for base_mf_d in range(-F1_D,F1_D+1,2):
     for p1,p2,p3,_ in polarisations:
-        state_mfs.append((base_mf,base_mf+p1,base_mf+p1+p2,base_mf+p1+p2+p3))
+        state_mfs.append((base_mf_d,base_mf_d+2*p1,base_mf_d+2*p1+2*p2,base_mf_d+2*p1+2*p2+2*p3))
 
 states = []
 for state_mf in state_mfs:
@@ -622,7 +672,7 @@ for state_mf in state_mfs:
 states=np.array(states)
 
 # %% tags=[]
-maximise_fid_dev(states,loop=True,table_len=15,rate_distance=False,max_bi=int(B_STEPS*0.9))
+maximise_fid_dev(states,loop=True,table_len=6,rate_distance=True)
 
 # %% [markdown]
 """
@@ -633,16 +683,16 @@ maximise_fid_dev(states,loop=True,table_len=15,rate_distance=False,max_bi=int(B_
 states=[]
 for N1 in range(0,N_MAX): #[1]:#
     N2=N1+1
-    F1 = round(N1+I1+I2)
-    for MF1 in range(F1):
-        for MF2 in [MF1-1,MF1,MF1+1]:
-            for i in range(label_degeneracy(N1,MF1)):
-                for j in range(label_degeneracy(N2,MF2)):
-                    states.append([(N1,MF1,i),(N2,MF2,j)])           
+    F1_D = 2*N1+I1_D+I2_D
+    for MF1_D in range(-F1_D,F1_D+1,2):
+        for MF2_D in [MF1_D-2,MF1_D,MF1_D+2]:
+            for i in range(label_degeneracy(N1,MF1_D)):
+                for j in range(label_degeneracy(N2,MF2_D)):
+                    states.append([(N1,MF1_D,i),(N2,MF2_D,j)])           
 states=np.array(states)
 
 # %% tags=[]
-maximise_fid_dev(states,table_len=9,rate_distance=False,ignore_small_deviation=True)
+maximise_fid_dev(states,table_len=6,rate_distance=True,ignore_small_deviation=True)
 
 # %% [markdown]
 """
@@ -654,14 +704,14 @@ states=[]
 N1=0
 N2=1
 N3=2
-F1 = round(N1+I1+I2)
-for MF1 in range(F1):
-    for MF2 in [MF1-1,MF1,MF1+1]:
-        for MF3 in [MF2-1,MF2,MF2+1]:
-            for i in range(label_degeneracy(N1,MF1)):
-                for j in range(label_degeneracy(N2,MF2)):
-                    for k in range(label_degeneracy(N3,MF3)):
-                        states.append([(N1,MF1,i),(N2,MF2,j),(N3,MF3,k)])           
+F1_D = 2*N1+I1_D+I2_D
+for MF1_D in range(-F1_D,F1_D+1,2):
+    for MF2_D in [MF1_D-2,MF1_D,MF1_D+2]:
+        for MF3_D in [MF2_D-2,MF2_D,MF2_D+2]:
+            for i in range(label_degeneracy(N1,MF1_D)):
+                for j in range(label_degeneracy(N2,MF2_D)):
+                    for k in range(label_degeneracy(N3,MF3_D)):
+                        states.append([(N1,MF1_D,i),(N2,MF2_D,j),(N3,MF3_D,k)])           
 states=np.array(states)
 
 # %% tags=[]
