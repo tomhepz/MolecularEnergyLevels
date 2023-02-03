@@ -62,8 +62,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "Na23K40"
-MOLECULE = Na23K40
+MOLECULE_STRING = "Na23Rb87"
+MOLECULE = Na23Rb87
 N_MAX=2
 
 B_MIN_GAUSS = 0.001 #G
@@ -159,10 +159,10 @@ def label_d_to_latex_string(label_d):
     mf_frac = mf_d%2
     i = label_d[2]
     if mf_frac == 0:
-        return r'$|{},{}\rangle_{{{}}}$'.format(n,mf_d//2,i)
+        return r'|{},{}\rangle_{{{}}}'.format(n,mf_d//2,i)
     else:
         mf_whole= (mf_d - np.sign(mf_d))//2
-        return r'$|{},{}\frac{{1}}{{2}}\rangle_{{{}}}$'.format(n,mf_whole,i)
+        return r'|{},{}.5\rangle_{{{}}}'.format(n,mf_whole,i)
 
 
 # %%
@@ -199,39 +199,6 @@ def maximum_fidelity(k,g):
                 )
     return numerator/denominator
 
-# def trio_transfer_efficiency(state1_label,state2_label,state3_label,bi,pulse_time=0.0001):
-#     state1i = label_to_state_no(*state1_label)
-#     state2i = label_to_state_no(*state2_label)
-#     state3i = label_to_state_no(*state3_label)
-    
-#     P = state1_label[1] - state2_label[1]
-#     COUPLING = COUPLINGS[P]
-    
-#     g = np.abs(COUPLING[bi, state1i, state3i]/COUPLING[bi, state1i, state2i])
-#     k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-#     sub_transfered = twice_average_fidelity(k,g)
-    
-#     return sub_transfered
-
-# def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
-#     transfered = 1
-    
-#     state1i = label_to_state_no(*state1_label)
-#     state2i = label_to_state_no(*state2_label)
-
-#     P = (state1_label[1] - state2_label[1])*(state2_label[0] - state1_label[0])
-#     this_coupling = COUPLINGS#[P]
-    
-#     for state3i in range(N_STATES):
-#         if state3i == state1i or state3i == state2i:
-#             continue
-#         g = np.abs(this_coupling[bi, state1i, state3i]/this_coupling[bi, state1i, state2i])
-#         k = np.abs(((ENERGIES[bi, state3i] - ENERGIES[bi, state2i]) / scipy.constants.h) / (1/pulse_time))
-#         sub_transfered = twice_average_fidelity(k,g)
-#         transfered *= sub_transfered
-        
-#     return transfered
-
 def fidelity(ts,d=8):
     return -np.log10(1-ts+10**(-d))
 
@@ -247,16 +214,75 @@ N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
 """
 
 # %%
-fig, axs = plt.subplots(3,1,figsize=(5,10))
+fig, axs = plt.subplots(3,1,figsize=(5,9),sharex = True)
+
+axs[0].set_xlim(0,B_MAX/GAUSS)
+axs[-1].set_xlabel('Magnetic Field $B_z$ (G)')
 
 N=N_MAX
 for ax in axs:
+    base_energy = np.abs(ENERGIES[0,PER_MN*(N)**2]/(scipy.constants.h*1e6))
+    ax.set_ylabel(f'Energy(MHz) - {base_energy:.2f} MHz')
     for si in range(PER_MN*(N)**2,PER_MN*(N+1)**2):
         if si in INITIAL_STATE_INDICES:
-            ax.plot(B,ENERGIES[:,si],c='red',lw=0.5, alpha=0.8)
+            ax.plot(B/GAUSS,ENERGIES[:,si]/(scipy.constants.h*1e6)-base_energy,c='red',lw=1.5, alpha=0.8,zorder=10)
+            ax.text(B[-1]/GAUSS,ENERGIES[-1,si]/(scipy.constants.h*1e6)-base_energy,f"${label_d_to_latex_string(LABELS_D[si])}$",c='red')
         else:
-            ax.plot(B,ENERGIES[:,si],c='black',lw=0.5, alpha=0.3)
+            ax.plot(B/GAUSS,ENERGIES[:,si]/(scipy.constants.h*1e6)-base_energy,c='black',lw=0.5, alpha=0.3,zorder=1)
     N-=1
+
+fig.savefig(f'../images/many-molecules/{MOLECULE_STRING}-zeeman.pdf')
+
+# %% [markdown]
+"""
+# Magnetic moments plot
+"""
+
+# %%
+fig, ax = plt.subplots(figsize=(4,6))
+
+ax.set_xlim(0,B_MAX_GAUSS)
+ax.set_xlabel('Magnetic Field $B_z$ (G)')
+ax.set_ylabel('Magnetic Moment, $\mu$ $(\mu_N)$')
+
+states_to_plot = []
+for N in range(0,3):
+    Fd = 2*N + I1_D + I2_D
+    for MF_D in range(-Fd,Fd+1,2):
+        for di in range(label_degeneracy(N,MF_D)):
+            states_to_plot.append((N,MF_D,di))
+
+for state_label in states_to_plot:
+    lw=1
+    col = 'black'#five_col[int(state_label[1]/2-2)]
+    ls = 'solid'
+    if state_label[0] == 1:
+        ls = 'dashed'
+        lw=0.75
+    if state_label[0] == 2:
+        ls = 'dotted'
+        lw=0.75
+    
+    index = label_to_state_no(*state_label)
+    ax.plot(B/GAUSS, MAGNETIC_MOMENTS[:,index]/muN,linestyle=ls, color=col, alpha=0.65,linewidth=lw);
+    
+
+# find all triplets 
+# for i,(la,lb,lc) in enumerate(ordered_states[:100]):
+#     if la[0] == 1 and lb[0]==0 and lc[0]==0:
+#         if la[1]<=6 and la[1]>=2 and lb[1]<=6 and lb[1]>=2 and lc[1]<=6 and lc[1]>=2:
+#             fid = ordered_fidelities[i]
+#             dev = ordered_deviations[i]/muN
+#             if fid < 0.2 or dev > 0.1:
+#                 continue
+#             x = B[ordered_B[i]]/GAUSS
+#             state_indices = np.array([label_to_state_no(*la),label_to_state_no(*lb),label_to_state_no(*lc)])
+#             y = np.sum(np.abs(MAGNETIC_MOMENTS[ordered_B[i],state_indices]))/(3*muN)
+#             ax.plot([x],[y], 'o', mfc='none',markersize=2,c='black')
+#             ax.text(x+5,y,f'f={fid:.3f},d={dev:.3f}',fontsize=8,va='bottom',ha='left',picker=True)
+#             ax.text(x+5,y,r'$|{},{}\rangle_{} |{},{}\rangle_{} |{},{}\rangle_{}$'.format(*la,*lb,*lc),fontsize=8,va='top',ha='left',picker=True)
+
+# fig.savefig('../images/3-level-qubit-all-coincidences')
 
 # %% [markdown]
 """
@@ -293,7 +319,8 @@ axm = fig.add_subplot(gs[0, 1])
 axr = fig.add_subplot(gs[0, 2])
 axb = fig.add_subplot(gs[1, :])
 
-fig.suptitle(r'$|{},{}\rangle_{} \rightarrow{{{}}}\rightarrow |1,M_F\rangle_i $'.format(*initial_state_label_d, polarisation_text))
+title_string = fr"${label_d_to_latex_string(initial_state_label_d)} \rightarrow {polarisation_text} \rightarrow |1,M_F\rangle_i $"
+fig.suptitle(title_string)
 
 axl.set_xlim(0,B_MAX/GAUSS)
 axm.set_xlim(0,B_MAX/GAUSS)
@@ -372,67 +399,7 @@ for i, focus_state_index in enumerate(accessible_state_indices):
         this_transferred_string = f"{this_transferred:.4f}"
         axb.text(text_place,1.02,this_transferred_string,rotation=60,c=this_colour)
 
-# fig.savefig('../images/2-level-optimisation.pdf')
-
-# %% [markdown]
-"""
-# Magnetic moments plot
-"""
-
-# %%
-fig, ax = plt.subplots(figsize=(4,6))
-
-ax.set_xlim(0,400)
-ax.set_ylim(6,0)
-ax.set_xlabel('Magnetic Field $B_z$ (G)')
-ax.set_ylabel('Magnetic Moment, $\mu$ $(\mu_N)$')
-
-five_col = [
-'#ff0000',
-'#00ff7f',
-'#00bfff',
-'#0000ff',
-'#ff1493'
-]
-
-MIN_MF_D = 2
-MAX_MF_D = 10
-
-states_to_plot = []
-for N in range(0,2):
-    Fd = 2*N + I1_D + I2_D
-    for MF_D in range(max(-Fd,MIN_MF_D),min(Fd+1,MAX_MF_D+1),2):
-        for di in range(label_degeneracy(N,MF_D)):
-            states_to_plot.append((N,MF_D,di))
-
-for state_label in states_to_plot:
-    lw=1
-    col = 'black'#five_col[int(state_label[1]/2-2)]
-    ls = 'solid'
-    if state_label[0] != 0:
-        ls = 'dashed'
-        lw=0.75
-        
-    index = label_to_state_no(*state_label)
-    ax.plot(B/GAUSS, MAGNETIC_MOMENTS[:,index]/muN,linestyle=ls, color=col, alpha=0.65,linewidth=lw);
-    
-
-# find all triplets 
-# for i,(la,lb,lc) in enumerate(ordered_states[:100]):
-#     if la[0] == 1 and lb[0]==0 and lc[0]==0:
-#         if la[1]<=6 and la[1]>=2 and lb[1]<=6 and lb[1]>=2 and lc[1]<=6 and lc[1]>=2:
-#             fid = ordered_fidelities[i]
-#             dev = ordered_deviations[i]/muN
-#             if fid < 0.2 or dev > 0.1:
-#                 continue
-#             x = B[ordered_B[i]]/GAUSS
-#             state_indices = np.array([label_to_state_no(*la),label_to_state_no(*lb),label_to_state_no(*lc)])
-#             y = np.sum(np.abs(MAGNETIC_MOMENTS[ordered_B[i],state_indices]))/(3*muN)
-#             ax.plot([x],[y], 'o', mfc='none',markersize=2,c='black')
-#             ax.text(x+5,y,f'f={fid:.3f},d={dev:.3f}',fontsize=8,va='bottom',ha='left',picker=True)
-#             ax.text(x+5,y,r'$|{},{}\rangle_{} |{},{}\rangle_{} |{},{}\rangle_{}$'.format(*la,*lb,*lc),fontsize=8,va='top',ha='left',picker=True)
-
-# fig.savefig('../images/3-level-qubit-all-coincidences.pdf')
+# fig.savefig('../images/2-level-optimisation')
 
 # %% [markdown]
 """
@@ -458,7 +425,7 @@ for bi in range(B_STEPS):
 
 
 # %%
-def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,max_bi=B_STEPS,table_len=9,ignore_small_deviation=False,rate_distance=True):
+def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,max_bi=B_STEPS,table_len=9,ignore_small_deviation=False,rate_distance=True,latex_table=False,save_name=None):
     n_comb = len(possibilities)
     n_waves = len(possibilities[0]) - 1 # NOTE: assumes paths are the same length
     print(n_comb, "combinations to consider")
@@ -542,7 +509,7 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
     ordered_rating = rating[order]
     
     # Create Table
-    headers = ['States', 'Mag. Field(G)', 'MagDipDev(u)', 'UnPol-Fid', 'Pol-Fid', 'UnPol-Dist','Rating','Path']
+    headers = ['States', 'B.Field(G)', 'MagDipDev(u)', 'UnPol-Fid', 'Pol-Fid', 'UnPol-Dist','Rating','Path']
     data = []
     for i in range(table_len):
         state_labels = ordered_states[i]
@@ -565,22 +532,25 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         while current_back != start_index:
             current_back = predecessor_list[current_back]
             path.append(LABELS_D[current_back])
-        if len(path) < 5:
+        if len(path) <= 3:
             path_string = "<".join([label_d_to_string(label) for label in path])
         else:
-            path_string = "<".join([label_d_to_string(label) for label in path[:2]])
-            path_string += f"<..(+{len(path)-4})..<"
-            path_string += "<".join([label_d_to_string(label) for label in path[len(path)-2:]])
+            path_string = "<".join([label_d_to_string(label) for label in path[:1]])
+            path_string += f"<(+{len(path)-2})<"
+            path_string += "<".join([label_d_to_string(label) for label in path[len(path)-1:]])
         states_string = ",".join([label_d_to_string(label) for label in state_labels])
-        data.append([states_string,this_magnetic_field/GAUSS,this_max_dev,this_fidelity_unpol,this_fidelity_pol,this_distance,this_rating,path_string])
+        data.append([states_string,f"{this_magnetic_field/GAUSS:6.1f}",f"{this_max_dev:7.5f}",f"{this_fidelity_unpol:7.5f}",f"{this_fidelity_pol:7.5f}",f"{this_distance:7.5f}",f"{this_rating:.1f}",path_string])
     print(tabulate(data, headers=headers,tablefmt="fancy_grid"))
+    if latex_table:
+        with open(f"../tables/{save_name}.tex", "w") as text_file:
+            text_file.write(tabulate(data, headers=headers, tablefmt="latex_raw"))
     
     # Show magnetic moments plot
     if plot:
-        fig, axs = plt.subplots(2,3,figsize=(8,8),dpi=100,sharex=True,constrained_layout=True) #,sharey=True
+        fig, axs = plt.subplots(1,4,figsize=(9,3.5),dpi=100,sharex=True,constrained_layout=True) #,sharey=True
         i=0
         for axh in axs:
-            for ax in axh:
+            for ax in [axh]:
                 state_labels = ordered_states[i]
                 state_numbers = np.array([label_to_state_no(*state_label) for state_label in ordered_states[i]])
                 ax.set_xlim(0,B_MAX/GAUSS)
@@ -594,13 +564,16 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
                 max_dev = np.abs(ordered_deviations[i])
                 states_string = ""
                 for si, label in enumerate(state_labels):
-                    states_string += label_d_to_latex_string(label)
-                ax.set_title(f'd={max_dev:.4f} f={this_fidelity:.4f} \n {states_string}')
+                    if si%2==0:
+                        states_string+="\n"
+                    states_string += f"${label_d_to_latex_string(label)}$"
+                ax.set_title(f'd={max_dev:.4f} f={this_fidelity:.4f} {states_string}',fontsize=9)
                 i+=1
 
         fig.supxlabel( 'Magnetic Field $B_z$ (G)')
         fig.supylabel('Magnetic Moment $\mu$ $(\mu_N)$')
-        # fig.savefig('../images/magnetic-dipole-coincides-storage-qubit.pdf')
+        if save_name is not None:
+            fig.savefig(f'../images/many-molecules/{save_name}.pdf')
 
 # %% [markdown]
 """
@@ -636,7 +609,43 @@ for N1 in range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],loop=False,required_crossing=[0,2],rate_distance=True,table_len=6)
+maximise_fid_dev(possibilities_d[:,:],loop=False,required_crossing=[0,2],rate_distance=True,table_len=6,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit")
+
+# %% [markdown]
+"""
+# Robust Storage Bit in N=0 Optimisation
+"""
+
+# %%
+# Find all possible combinations
+# two states in N, one in N+-1
+
+possibilities = []
+for N1 in [1]: #range(0,N_MAX+1): #[1]:#
+    for N2 in [0]: #[N1-1,N1+1]: #[0]:#
+        if N2 < 0 or N2 > N_MAX:
+            continue
+        F1_D = 2*N1+I1_D+I2_D
+        F2_D = 2*N2+I1_D+I2_D
+        for MF1_D in range(-F1_D,F1_D+1,2):#[2,3,4,5]+([6] if N1>0 else []):#range(-F1,F1+1,1):
+            for p1 in [-1,0,1]:
+                for p2 in [-1,0,1]:
+                    if MF1_D+2*p1 > F2_D or MF1_D+2*p1 < -F2_D or MF1_D+2*p2 > F2_D or MF1_D+2*p2 < -F2_D:
+                        continue
+                    MF2a_D = MF1_D+2*p1
+                    MF2b_D = MF1_D+2*p2
+                    if MF2a_D < MF2b_D:
+                        continue
+                    for i in range(label_degeneracy(N1,MF1_D)):
+                        for j in range(label_degeneracy(N2,MF2a_D)):
+                            for k in range(label_degeneracy(N2,MF2b_D)):
+                                if MF2a_D == MF2b_D and j <= k:
+                                    continue
+                                possibilities.append([(N2,MF2a_D,j),(N1,MF1_D,i),(N2,MF2b_D,k)])
+possibilities_d = np.array(possibilities)
+
+# %%
+maximise_fid_dev(possibilities_d[:,:],loop=False,required_crossing=[0,2],rate_distance=True,table_len=6,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero")
 
 # %% [markdown]
 """
@@ -672,7 +681,7 @@ for state_mf in state_mfs:
 states=np.array(states)
 
 # %% tags=[]
-maximise_fid_dev(states,loop=True,table_len=6,rate_distance=True)
+maximise_fid_dev(states,loop=True,table_len=6,rate_distance=True,latex_table=True,save_name=f"{MOLECULE_STRING}-4-state")
 
 # %% [markdown]
 """
@@ -692,7 +701,7 @@ for N1 in range(0,N_MAX): #[1]:#
 states=np.array(states)
 
 # %% tags=[]
-maximise_fid_dev(states,table_len=6,rate_distance=True,ignore_small_deviation=True)
+maximise_fid_dev(states,table_len=6,rate_distance=True,ignore_small_deviation=True,latex_table=True,save_name=f"{MOLECULE_STRING}-2-state")
 
 # %% [markdown]
 """
@@ -715,4 +724,6 @@ for MF1_D in range(-F1_D,F1_D+1,2):
 states=np.array(states)
 
 # %% tags=[]
-maximise_fid_dev(states,table_len=9)
+maximise_fid_dev(states,table_len=6,latex_table=True,save_name=f"{MOLECULE_STRING}-3-state")
+
+# %%

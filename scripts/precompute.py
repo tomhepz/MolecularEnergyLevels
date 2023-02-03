@@ -42,8 +42,8 @@ import scipy.constants
 """
 
 # %%
-MOLECULE_STRING = "Na23Rb87"
-MOLECULE = Na23Rb87
+MOLECULE_STRING = "Na23Cs133"
+MOLECULE = Na23Cs133
 N_MAX=2
 
 B_MIN_GAUSS = 0.001 #G
