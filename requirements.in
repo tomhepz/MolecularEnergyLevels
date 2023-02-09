@@ -8,5 +8,6 @@ jupytext
 jupyterlab
 ipympl
 mpl_interactions[jupyter]
+pyvis
 tqdm
 tabulate

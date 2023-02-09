@@ -42,42 +42,33 @@ import scipy.constants
 """
 
 # %%
-MOLECULE_STRING = "Na23Cs133"
-MOLECULE = Na23Cs133
+MOLECULE_STRING = "Rb87Cs133"
+MOLECULE = Rb87Cs133
 N_MAX=2
-
-B_MIN_GAUSS = 0.001 #G
-B_MAX_GAUSS = 1000 #G
-B_STEPS = 500
-
 PULSE_TIME_US = 500 #μs
 
-settings_string = f'{MOLECULE_STRING}NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
+GAUSS = 1e-4 # T
+B = np.concatenate([np.arange(0.1,100,0.1),np.arange(100,500,1),np.arange(500,1000,10)]) * GAUSS
 
-# %% [markdown]
-"""
-## Computed Constants
-"""
+######
 
-# %%
+B_STEPS = len(B)
+B_MIN = B[0]
+B_MAX= B[-1]
+
+settings_string = f'{MOLECULE_STRING}NMax{N_MAX}PTime{PULSE_TIME_US}'
+
 H_BAR = scipy.constants.hbar
 
 I1 = MOLECULE["I1"]
 I2 = MOLECULE["I2"]
-I1_D = round(2*I1)
-I2_D = round(2*I2)
+I1_D = round(2*MOLECULE["I1"])
+I2_D = round(2*MOLECULE["I2"])
 
-D_0 = MOLECULE["d0"]
-
-PER_MN = round((2*I1+1)*(2*I2+1))
+PER_MN = (I1_D+1)*(I2_D+1)
 N_STATES = PER_MN * (N_MAX+1)**2
 
-GAUSS = 1e-4 # T
-B_MIN = B_MIN_GAUSS * GAUSS # T
-B_MAX = B_MAX_GAUSS * GAUSS # T
 PULSE_TIME = PULSE_TIME_US * 1e-6 # s
-
-B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
 # %% [markdown]
 """
@@ -117,7 +108,7 @@ for n in range(0, N_MAX + 1):
             for mi2d in range(I2_D,-I2_D-1,-2):
                 UNCOUPLED_LABELS_D.append((n,mn,mi1d,mi2d))
 
-UNCOUPLED_LABELS_D = (np.rint(UNCOUPLED_LABELS_D)).astype("int") # TODO: Fix 1/2 int spin
+UNCOUPLED_LABELS_D = (np.rint(UNCOUPLED_LABELS_D)).astype("int")
 
 # %%
 MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->bi', STATES.conj(), -Hz, STATES, optimize='optimal')
@@ -193,7 +184,8 @@ for Na in range(N_MAX):
 """
 
 # %%
-np.savez_compressed(f'../precomputed/{settings_string}.npz', 
+np.savez_compressed(f'../precomputed/{settings_string}.npz',
+                    b = B,
                     energies = ENERGIES,
                     states = STATES, 
                     labels_d = LABELS_D,
