@@ -65,8 +65,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "Na23K40"
-MOLECULE = Na23K40
+MOLECULE_STRING = "Rb87Cs133"
+MOLECULE = Rb87Cs133
 N_MAX=2
 
 PULSE_TIME_US = 500 #μs
@@ -108,6 +108,10 @@ B=data['b']
 B_MIN = B[0]
 B_MAX = B[-1]
 B_STEPS = len(B)
+
+INITIAL_STATE_LABELS_D = MOLECULE["StartStates_D"]
+INITIAL_STATE_INDICES = [label_to_state_no(*label_d) for label_d in INITIAL_STATE_LABELS_D]
+N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
 
 ENERGIES = data['energies']
 STATES = data['states']
@@ -221,11 +225,6 @@ def field_to_bi(gauss):
 def fid_to_string(fid):
     return f"{fid:.4f}({fidelity(fid,d=9):.1f})"
 
-
-# %%
-INITIAL_STATE_LABELS_D = MOLECULE["StartStates_D"]
-INITIAL_STATE_INDICES = [label_to_state_no(*label_d) for label_d in INITIAL_STATE_LABELS_D]
-N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
 
 # %% [markdown] tags=[]
 """
@@ -563,7 +562,7 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         # Find best B for minimum dipole deviation
         all_moments = MAGNETIC_MOMENTS[:,desired_indices]
         this_deviation = np.abs((np.amax(all_moments,axis=1) - np.amin(all_moments,axis=1)))
-        this_deviation_fid = np.exp(-PULSE_TIME*this_deviation*N*B_NOISE/(scipy.constants.h))
+        this_deviation_fid = np.exp(-(PULSE_TIME/2)*this_deviation*B_NOISE/(scipy.constants.h))
         if rate_deviation_fid:
             this_rating *= this_deviation_fid
             if required_crossing is not None:
@@ -736,8 +735,7 @@ for N1 in range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit",
-                rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=True, rate_unpol_fid=True, rate_pol_fid=True)
+maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit")
 
 # %% [markdown]
 """
@@ -772,7 +770,7 @@ for N1 in [1]: #range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",
+maximise_fid_dev(possibilities_d[:,:],table_len=20,required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",
                  rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False)
 
 # %% [markdown]
