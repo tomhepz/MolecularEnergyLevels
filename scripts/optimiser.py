@@ -65,8 +65,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "Rb87Cs133"
-MOLECULE = Rb87Cs133
+MOLECULE_STRING = "Na23K40"
+MOLECULE = Na23K40
 N_MAX=2
 
 PULSE_TIME_US = 500 #μs
@@ -86,10 +86,12 @@ D_0 = MOLECULE["d0"]
 
 PER_MN = round((2*I1+1)*(2*I2+1))
 N_STATES = PER_MN * (N_MAX+1)**2
-print(f"{N_STATES} in molecule")
+print(f"{N_STATES} states loaded from molecule.")
 
 GAUSS = 1e-4 # T
 PULSE_TIME = PULSE_TIME_US * 1e-6 # s
+
+B_NOISE = 35 * 1e-3 * GAUSS
 
 # B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
@@ -216,6 +218,11 @@ def field_to_bi(gauss):
 
 
 # %%
+def fid_to_string(fid):
+    return f"{fid:.4f}({fidelity(fid,d=9):.1f})"
+
+
+# %%
 INITIAL_STATE_LABELS_D = MOLECULE["StartStates_D"]
 INITIAL_STATE_INDICES = [label_to_state_no(*label_d) for label_d in INITIAL_STATE_LABELS_D]
 N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
@@ -282,7 +289,7 @@ for state_label in states_to_plot:
     index = label_to_state_no(*state_label)
     ax.plot(B/GAUSS, MAGNETIC_MOMENTS[:,index]/muN,linestyle=ls, color=col, alpha=0.65,linewidth=lw);
 
-# fig.savefig('../images/3-level-qubit-all-coincidences')
+fig.savefig(f'../images/many-molecules/{MOLECULE_STRING}-magnetic-dipole-moments.pdf')
 
 # %% [markdown]
 """
@@ -290,20 +297,28 @@ for state_label in states_to_plot:
 """
 
 # %%
-cumulative_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES))
-predecessor_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES),dtype=int)
+cumulative_unpol_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES))
+predecessor_unpol_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES),dtype=int)
+
+cumulative_pol_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES))
+predecessor_pol_fidelity_from_initials = np.zeros((B_STEPS,N_INITIAL_STATES,N_STATES),dtype=int)
 
 for bi in range(B_STEPS):
     considered_matrix = UNPOLARISED_PAIR_FIDELITIES[:,:,bi]
     sparse_graph = csgraph.csgraph_from_dense(-np.log(considered_matrix), null_value=np.inf) # Expecting div 0 warning, this is fine
     (distances_from_initials),(predecessors_from_initials) = csgraph.shortest_path(sparse_graph,return_predecessors=True,directed=False,indices=INITIAL_STATE_INDICES)
+    cumulative_unpol_fidelity_from_initials[bi]=distances_from_initials
+    predecessor_unpol_fidelity_from_initials[bi]=predecessors_from_initials
     
-    cumulative_fidelity_from_initials[bi]=distances_from_initials
-    predecessor_fidelity_from_initials[bi]=predecessors_from_initials
+    considered_matrix = POLARISED_PAIR_FIDELITIES[:,:,bi]
+    sparse_graph = csgraph.csgraph_from_dense(-np.log(considered_matrix), null_value=np.inf) # Expecting div 0 warning, this is fine
+    (distances_from_initials),(predecessors_from_initials) = csgraph.shortest_path(sparse_graph,return_predecessors=True,directed=False,indices=INITIAL_STATE_INDICES)
+    cumulative_pol_fidelity_from_initials[bi]=distances_from_initials
+    predecessor_pol_fidelity_from_initials[bi]=predecessors_from_initials
 
 # %%
-CUTOFF_DISTANCE = 0.99
-CUTOFF_BI = 100
+CUTOFF_DISTANCE = 0.9
+CUTOFF_BI = field_to_bi(181.5)
 from pyvis.network import Network
 net = Network(height="1000px",width="75%",directed=False,notebook=True,cdn_resources='in_line',neighborhood_highlight=False,layout=None,filter_menu=False)
 # net.repulsion()
@@ -316,15 +331,15 @@ colours_hex = [matplotlib.colors.to_hex(c, keep_alpha=False) for c in colours]
 
 
 for si in range(N_STATES):
-    ssi = np.argmax(np.exp(-cumulative_fidelity_from_initials[CUTOFF_BI,:,si]))
-    fid = np.exp(-cumulative_fidelity_from_initials[CUTOFF_BI,ssi,si])
+    ssi = np.argmax(np.exp(-cumulative_unpol_fidelity_from_initials[CUTOFF_BI,:,si]))
+    fid = np.exp(-cumulative_unpol_fidelity_from_initials[CUTOFF_BI,ssi,si])
     if fid > CUTOFF_DISTANCE: # Use me
         # Build tree
         current_back = si
         current_back_label = LABELS_D[si]
         start_index = INITIAL_STATE_INDICES[ssi]
         start_label = LABELS_D[start_index]
-        predecessor_list = predecessor_fidelity_from_initials[CUTOFF_BI, ssi,:]
+        predecessor_list = predecessor_unpol_fidelity_from_initials[CUTOFF_BI, ssi,:]
         
         # path = [current_back]
         # states.add(current_back)
@@ -489,45 +504,43 @@ for i, focus_state_index in enumerate(accessible_state_indices):
 
 
 # %%
-def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,max_bi=B_STEPS,table_len=9,ignore_small_deviation=False,rate_distance=True,latex_table=False,save_name=None,consider_top=25):
+def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B_STEPS,
+                     rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False,
+                     plot=True, table_len=8, latex_table=False, save_name=None):
     n_comb = len(possibilities)
     n_waves = len(possibilities[0]) - 1 # NOTE: assumes paths are the same length
+    x_plots = 4
+    y_plots = 1
+    n_plots = x_plots*y_plots
+    consider_top=max(n_plots,table_len)
     print(n_comb, "combinations to consider")
     possibilities_indices = np.array([np.array([label_to_state_no(*label) for label in possibility]) for possibility in possibilities])
-    
-    distance = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    distance_metric = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    
-    deviation = np.ones((B_STEPS, consider_top),dtype=np.double)
-    deviation_metric = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    
+
+    deviation_fid = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    unpol_distance_fid = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    pol_distance_fid = np.zeros((B_STEPS, consider_top),dtype=np.double)    
     unpol_fid = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    unpol_fid_metric = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    
     pol_fid = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    pol_fid_metric = np.zeros((B_STEPS, consider_top),dtype=np.double)
     
     rating = np.zeros((B_STEPS,consider_top),dtype=np.double)
     peak_rating = np.zeros((consider_top),dtype=np.double)
     peak_rating_index = np.zeros((consider_top),dtype=int)
-    
+
+    worst_rating_so_far = 0
     for i, desired_indices in tqdm(enumerate(possibilities_indices),total=n_comb):
-        # Find path to get there from initial state
-        this_distance = np.exp(-np.min(cumulative_fidelity_from_initials[:,:,desired_indices],axis=(1,2)))
-        this_distance_metric = fidelity(this_distance,d=3)/3
+        this_rating = np.ones((B_STEPS),dtype=np.double)
         
-        # Find best B for minimum dipole deviation
-        all_moments = MAGNETIC_MOMENTS[:,desired_indices]
-        if required_crossing is not None:
-            required_deviation = all_moments[:,required_crossing[0]]-all_moments[:,required_crossing[1]]
-            sign_changes = np.where(np.diff(np.sign(required_deviation)))[0]
-            mask = np.ones(max_bi, dtype=bool)
-            mask[sign_changes] = False
-            all_moments[mask,0] = 1e10
-        max_moment = np.amax(all_moments,axis=1)
-        min_moment = np.amin(all_moments,axis=1)
-        this_deviation = np.abs((max_moment - min_moment)/muN)
-        this_deviation_metric = -np.log10(this_deviation+1e-3)/3
+        # Find path to get there from initial state
+        this_unpol_distance_fid = np.exp(-np.min(cumulative_unpol_fidelity_from_initials[:,:,desired_indices],axis=(1,2)))
+        if rate_unpol_distance_fid:
+            this_rating *= this_unpol_distance_fid
+            if np.max(this_rating) < worst_rating_so_far:
+                continue
+        this_pol_distance_fid = np.exp(-np.min(cumulative_pol_fidelity_from_initials[:,:,desired_indices],axis=(1,2)))
+        if rate_pol_distance_fid:
+            this_rating *= this_pol_distance_fid
+            if np.max(this_rating) < worst_rating_so_far:
+                continue
         
         # Simulate microwave transfers to find fidelity *within structure*
         this_unpol_fid = np.ones(B_STEPS,dtype=np.double)
@@ -538,40 +551,58 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         if loop:
             this_unpol_fid *= UNPOLARISED_PAIR_FIDELITIES[desired_indices[0],desired_indices[-1],:]
             this_pol_fid *= POLARISED_PAIR_FIDELITIES[desired_indices[0],desired_indices[-1],:]
-        this_unpol_fid_metric = fidelity(this_unpol_fid,d=3)/3
-        this_pol_fid_metric = fidelity(this_pol_fid,d=5)/5
-        
-        # Rank this combination
-        this_rating = this_deviation_metric * this_unpol_fid_metric * this_pol_fid_metric
-        if rate_distance:
-            this_rating *= this_distance_metric
-        
+        if rate_unpol_fid:
+            this_rating *= this_unpol_fid
+            if np.max(this_rating) < worst_rating_so_far:
+                continue
+        if rate_pol_fid:
+            this_rating *= this_pol_fid
+            if np.max(this_rating) < worst_rating_so_far:
+                continue
+                
+        # Find best B for minimum dipole deviation
+        all_moments = MAGNETIC_MOMENTS[:,desired_indices]
+        this_deviation = np.abs((np.amax(all_moments,axis=1) - np.amin(all_moments,axis=1)))
+        this_deviation_fid = np.exp(-PULSE_TIME*this_deviation*N*B_NOISE/(scipy.constants.h))
+        if rate_deviation_fid:
+            this_rating *= this_deviation_fid
+            if required_crossing is not None:
+                required_deviation = all_moments[:,required_crossing[0]]-all_moments[:,required_crossing[1]]
+                sign_changes = np.where(np.diff(np.sign(required_deviation)))[0]
+                mask = np.ones(max_bi, dtype=bool)
+                mask[sign_changes] = False
+                this_rating[mask] = 0
+            if np.max(this_rating) < worst_rating_so_far:
+                continue
+
         this_peak_rating = np.max(this_rating)
         better_array = this_peak_rating - peak_rating
-        the_worst_index = np.argmax(better_array)
+        partitioned_array = np.argpartition(better_array, -2)
+        the_worst_index = partitioned_array[-1]
+        the_second_worst_index = partitioned_array[-2]
         the_worst_difference = better_array[the_worst_index]
         if the_worst_difference > 0:
             peak_rating[the_worst_index] = this_peak_rating
             peak_rating_index[the_worst_index] = i
             
-            distance[:,the_worst_index] = this_distance
-            distance_metric[:,the_worst_index] = this_distance_metric
-            deviation[:,the_worst_index] = this_deviation
-            deviation_metric[:,the_worst_index] = this_deviation_metric
+            unpol_distance_fid[:,the_worst_index] = this_unpol_distance_fid
+            pol_distance_fid[:,the_worst_index] = this_pol_distance_fid
+            deviation_fid[:,the_worst_index] = this_deviation_fid
             unpol_fid[:,the_worst_index] = this_unpol_fid
             pol_fid[:,the_worst_index] = this_pol_fid
-            unpol_fid_metric[:,the_worst_index] = this_unpol_fid_metric
-            pol_fid_metric[:,the_worst_index] = this_pol_fid_metric
         
             rating[:,the_worst_index] = this_rating
+            worst_rating_so_far = min(this_peak_rating,peak_rating[the_second_worst_index])
+        else:
+            worst_rating_so_far = peak_rating[the_worst_index]
 
     order = (-peak_rating).argsort()
     
     # Display Results
     if plot:
-        fig, axs = plt.subplots(3,3,figsize=(9,6),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+        fig, axs = plt.subplots(y_plots,x_plots,figsize=(10,3.5),dpi=100,sharex=True,sharey=True,constrained_layout=True)
         axs = axs.flatten()
-    headers = ['States', 'B.Field(G)', 'MagDipDev(u)', 'UnPol-Fid', 'Pol-Fid', 'UnPol-Dist','Rating','Path']
+    headers = ['States', 'B(G)', 'MagDipFid', 'UnPolFid', 'PolFid', 'UnPolDistFid', 'PolDistFid', 'UnPolOverall', 'PolOverall', 'Rating', 'Path']
     data = []
     for i in range(table_len):
         besti = order[i]
@@ -580,39 +611,53 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         state_numbers = np.array([label_to_state_no(*state_label) for state_label in state_labels])
         
         this_rating = rating[:,besti]
-        # this_peak_rating = peak_rating[besti]
         peak_rating_bi = np.argmax(this_rating)
         peak_rating = this_rating[peak_rating_bi]
         peak_magnetic_field = B[peak_rating_bi]
         
-        this_distance_metric = distance_metric[:,besti]
-        this_deviation_metric = deviation_metric[:,besti]
-        this_unpol_fid_metric = unpol_fid_metric[:,besti]
-        this_pol_fid_metric = pol_fid_metric[:,besti]
+        this_unpol_distance_fid = unpol_distance_fid[:,besti]
+        this_pol_distance_fid = pol_distance_fid[:,besti]
+        this_deviation_fid = deviation_fid[:,besti]
+        this_unpol_fid = unpol_fid[:,besti]
+        this_pol_fid = pol_fid[:,besti]
         
-        if plot and i<9:
+        this_unpol_overall = this_deviation_fid*this_unpol_distance_fid*this_unpol_fid
+        this_pol_overall = this_deviation_fid*this_pol_distance_fid*this_pol_fid
+        
+        peak_pol_distance_fid = this_pol_distance_fid[peak_rating_bi]
+        peak_unpol_distance_fid = this_unpol_distance_fid[peak_rating_bi]
+        peak_deviation_fid = this_deviation_fid[peak_rating_bi]
+        peak_unpol_fid = this_unpol_fid[peak_rating_bi]
+        peak_pol_fid = this_pol_fid[peak_rating_bi]
+        
+        peak_unpol_overall = this_unpol_overall[peak_rating_bi]
+        peak_pol_overall = this_pol_overall[peak_rating_bi]
+        
+        if plot and i<n_plots:
             ax = axs[i]
             ax.set_xlim(0,B_MAX/GAUSS)
-            ax.set_ylim(0,1.01)
+            ax.set_ylim(0,5)
 
-            ax.plot(B/GAUSS, this_distance_metric, linestyle='dashed', c='green', alpha=0.4)
-            ax.plot(B/GAUSS, this_deviation_metric, linestyle='dashed', c='blue', alpha=0.4)
-            ax.plot(B/GAUSS, this_unpol_fid_metric, linestyle='dotted', c='black', alpha=0.4)
-            ax.plot(B/GAUSS, this_pol_fid_metric, linestyle='dotted', c='black', alpha=0.4)
+            ax.plot(B/GAUSS, fidelity(this_deviation_fid,d=5), linestyle='solid', c='blue', alpha=0.4)
             
-            ax.axvline(B[peak_rating_bi]/GAUSS,color='black',linewidth=1,dashes=(3,2))
+            ax.plot(B/GAUSS, fidelity(this_unpol_distance_fid,d=5), linestyle='dashed', c='red', alpha=0.4)
+            ax.plot(B/GAUSS, fidelity(this_pol_distance_fid,d=5), linestyle='dashed', c='green', alpha=0.4)
 
-            ax.plot(B/GAUSS, this_rating, c='red')
+            ax.plot(B/GAUSS, fidelity(this_unpol_fid,d=5), linestyle='dotted', c='red', alpha=0.4)
+            ax.plot(B/GAUSS, fidelity(this_pol_fid,d=5), linestyle='dotted', c='green', alpha=0.4)
+
+            ax.plot(B/GAUSS, fidelity(this_unpol_overall,d=5), c='red')
+            ax.plot(B/GAUSS, fidelity(this_pol_overall,d=5), c='green')
             
-        peak_distance = distance[peak_rating_bi,besti]
-        peak_deviation = deviation[peak_rating_bi,besti]
-        peak_unpol_fid = unpol_fid[peak_rating_bi,besti]
-        peak_pol_fid = pol_fid[peak_rating_bi,besti]
+            at_field = B[peak_rating_bi]/GAUSS
+            lower_inset_bi = field_to_bi(at_field-20)
+            upper_inset_bi = field_to_bi(at_field+20)
             
-        peak_distance_metric = this_distance_metric[peak_rating_bi]
-        peak_deviation_metric = this_deviation_metric[peak_rating_bi]
-        peak_unpol_fid_metric = this_unpol_fid_metric[peak_rating_bi]
-        peak_pol_fid_metric = this_pol_fid_metric[peak_rating_bi]
+            axinset = ax.inset_axes([0.65, 0.65, 0.3, 0.3])
+            axinset.plot(B[lower_inset_bi:upper_inset_bi]/GAUSS,MAGNETIC_MOMENTS[lower_inset_bi:upper_inset_bi,state_numbers]/muN)
+            axinset.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
+            
+            ax.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
         
         # current_back = state_numbers[this_distance_topo_index]
         # start_index = INITIAL_STATE_INDICES[this_distance_initial_index]
@@ -630,19 +675,23 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         #     path_string += f"<(+{len(path)-2})<"
         #     path_string += "<".join([label_d_to_string(label) for label in path[len(path)-1:]])
         
+        
         path_string = "---"
         states_string = ",".join([label_d_to_string(label) for label in state_labels])
         string_list = [states_string,
                        f"{peak_magnetic_field/GAUSS:6.1f}",
-                       f"{peak_deviation:.3f}u({peak_deviation_metric:.2f})",
-                       f"{peak_unpol_fid:.3f}({peak_unpol_fid_metric:.2f})",
-                       f"{peak_pol_fid:.3f}({peak_pol_fid_metric:.2f})",
-                       f"{peak_distance:.3f}({peak_distance_metric:.2f})",
-                       f"{peak_rating:7.4f}",
+                       fid_to_string(peak_deviation_fid),
+                       fid_to_string(peak_unpol_fid),
+                       fid_to_string(peak_pol_fid),
+                       fid_to_string(peak_unpol_distance_fid),
+                       fid_to_string(peak_pol_distance_fid),
+                       fid_to_string(peak_unpol_overall),
+                       fid_to_string(peak_pol_overall),
+                       fid_to_string(peak_rating),
                        path_string]
         data.append(string_list)
     
-    print(tabulate(data, headers=headers,tablefmt="fancy_grid"))
+    html_table = tabulate(data, headers=headers,tablefmt="html")
     if latex_table:
         with open(f"../tables/{save_name}.tex", "w") as text_file:
             text_file.write(tabulate(data, headers=headers, tablefmt="latex_raw"))
@@ -652,6 +701,7 @@ def maximise_fid_dev(possibilities,loop=False,plot=True,required_crossing=None,m
         if save_name is not None:
             fig.savefig(f'../images/many-molecules/{save_name}.pdf')
 
+    return html_table
 
 # %% [markdown]
 """
@@ -686,7 +736,8 @@ for N1 in range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],loop=False,required_crossing=[0,2],rate_distance=True,table_len=9,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit")
+maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit",
+                rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=True, rate_unpol_fid=True, rate_pol_fid=True)
 
 # %% [markdown]
 """
@@ -721,14 +772,63 @@ for N1 in [1]: #range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],loop=False,required_crossing=[0,2],rate_distance=True,table_len=9,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero")
+maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",
+                 rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False)
+
+# %% [markdown]
+"""
+# 2-state
+"""
+
+# %% tags=[]
+print("2-state optimisation")
+
+states=[]
+for N1 in range(0,N_MAX): #[1]:#
+    N2=N1+1
+    F1_D = 2*N1+I1_D+I2_D
+    for MF1_D in range(-F1_D,F1_D+1,2):
+        for MF2_D in [MF1_D-2,MF1_D,MF1_D+2]:
+            for i in range(label_degeneracy(N1,MF1_D)):
+                for j in range(label_degeneracy(N2,MF2_D)):
+                    states.append([(N1,MF1_D,i),(N2,MF2_D,j)])           
+states=np.array(states)
+
+# %% tags=[]
+maximise_fid_dev(states,latex_table=True,save_name=f"{MOLECULE_STRING}-2-state")
+
+# %% [markdown]
+"""
+
+# 3-state
+"""
+
+# %%
+print("3-state optimisation")
+
+states=[]
+N1=0
+N2=1
+N3=2
+F1_D = 2*N1+I1_D+I2_D
+for MF1_D in range(-F1_D,F1_D+1,2):
+    for MF2_D in [MF1_D-2,MF1_D,MF1_D+2]:
+        for MF3_D in [MF2_D-2,MF2_D,MF2_D+2]:
+            for i in range(label_degeneracy(N1,MF1_D)):
+                for j in range(label_degeneracy(N2,MF2_D)):
+                    for k in range(label_degeneracy(N3,MF3_D)):
+                        states.append([(N1,MF1_D,i),(N2,MF2_D,j),(N3,MF3_D,k)])           
+states=np.array(states)
+
+# %% tags=[]
+maximise_fid_dev(states,latex_table=True, save_name=f"{MOLECULE_STRING}-3-state")
 
 # %% [markdown]
 """
 # 4-state loop Optimisation
 """
 
-# %% tags=[]
+# %%
 print("4-state loop optimisation")
 
 # Find all possible combinations
@@ -758,53 +858,7 @@ for state_mf in state_mfs:
                     
 states=np.array(states)
 
-# %% tags=[]
-maximise_fid_dev(states,loop=True,table_len=9,rate_distance=True,latex_table=True,save_name=f"{MOLECULE_STRING}-4-state")
-
-# %% [markdown]
-"""
-# 2-state
-"""
-
-# %% tags=[]
-print("2-state optimisation")
-
-states=[]
-for N1 in range(0,N_MAX): #[1]:#
-    N2=N1+1
-    F1_D = 2*N1+I1_D+I2_D
-    for MF1_D in range(-F1_D,F1_D+1,2):
-        for MF2_D in [MF1_D-2,MF1_D,MF1_D+2]:
-            for i in range(label_degeneracy(N1,MF1_D)):
-                for j in range(label_degeneracy(N2,MF2_D)):
-                    states.append([(N1,MF1_D,i),(N2,MF2_D,j)])           
-states=np.array(states)
-
-# %% tags=[]
-maximise_fid_dev(states,table_len=9,rate_distance=True,ignore_small_deviation=True,latex_table=True,save_name=f"{MOLECULE_STRING}-2-state")
-
-# %% [markdown]
-"""
-
-# 3-state
-"""
+# %%
+maximise_fid_dev(states,loop=True,latex_table=True,save_name=f"{MOLECULE_STRING}-4-state")
 
 # %%
-print("3-state optimisation")
-
-states=[]
-N1=0
-N2=1
-N3=2
-F1_D = 2*N1+I1_D+I2_D
-for MF1_D in range(-F1_D,F1_D+1,2):
-    for MF2_D in [MF1_D-2,MF1_D,MF1_D+2]:
-        for MF3_D in [MF2_D-2,MF2_D,MF2_D+2]:
-            for i in range(label_degeneracy(N1,MF1_D)):
-                for j in range(label_degeneracy(N2,MF2_D)):
-                    for k in range(label_degeneracy(N3,MF3_D)):
-                        states.append([(N1,MF1_D,i),(N2,MF2_D,j),(N3,MF3_D,k)])           
-states=np.array(states)
-
-# %% tags=[]
-maximise_fid_dev(states,table_len=9,latex_table=True,rate_distance=True,save_name=f"{MOLECULE_STRING}-3-state")
