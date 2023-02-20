@@ -91,7 +91,7 @@ print(f"{N_STATES} states loaded from molecule.")
 GAUSS = 1e-4 # T
 PULSE_TIME = PULSE_TIME_US * 1e-6 # s
 
-B_NOISE = 35 * 1e-3 * GAUSS
+B_NOISE = 43 * 1e-6 * GAUSS
 
 # B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
@@ -108,10 +108,6 @@ B=data['b']
 B_MIN = B[0]
 B_MAX = B[-1]
 B_STEPS = len(B)
-
-INITIAL_STATE_LABELS_D = MOLECULE["StartStates_D"]
-INITIAL_STATE_INDICES = [label_to_state_no(*label_d) for label_d in INITIAL_STATE_LABELS_D]
-N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
 
 ENERGIES = data['energies']
 STATES = data['states']
@@ -145,6 +141,12 @@ def label_to_state_no(N,MF_D,k):
 
 def state_no_to_uncoupled_label(state_no):
     return UNCOUPLED_LABELS_D[state_no]
+
+
+# %%
+INITIAL_STATE_LABELS_D = MOLECULE["StartStates_D"]
+INITIAL_STATE_INDICES = [label_to_state_no(*label_d) for label_d in INITIAL_STATE_LABELS_D]
+N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
 
 
 # %%
@@ -235,7 +237,7 @@ def fid_to_string(fid):
 print("plotting zeeman diagram...")
 fig, axs = plt.subplots(3,1,figsize=(5,9),sharex = True)
 
-axs[0].set_xlim(0,B_MAX/GAUSS)
+axs[0].set_xlim(0,0.0002/GAUSS)
 axs[-1].set_xlabel('Magnetic Field $B_z$ (G)')
 
 N=N_MAX
@@ -244,13 +246,21 @@ for ax in axs:
     ax.set_ylabel(f'Energy(MHz) - {base_energy:.2f} MHz')
     for si in range(PER_MN*(N)**2,PER_MN*(N+1)**2):
         if si in INITIAL_STATE_INDICES:
-            ax.plot(B/GAUSS,ENERGIES[:,si]/(scipy.constants.h*1e6)-base_energy,c='red',lw=1.5, alpha=0.8,zorder=10)
-            ax.text(B[-1]/GAUSS,ENERGIES[-1,si]/(scipy.constants.h*1e6)-base_energy,f"${label_d_to_latex_string(LABELS_D[si])}$",c='red')
+            ax.plot(B[0:20]/GAUSS,ENERGIES[0:20,si]/(scipy.constants.h*1e6)-base_energy,c='red',lw=1.5, alpha=0.8,zorder=10)
+            ax.text(B[21]/GAUSS,ENERGIES[21,si]/(scipy.constants.h*1e6)-base_energy,f"${label_d_to_latex_string(LABELS_D[si])}$",c='red')
         else:
-            ax.plot(B/GAUSS,ENERGIES[:,si]/(scipy.constants.h*1e6)-base_energy,c='black',lw=0.5, alpha=0.3,zorder=1)
+            ax.plot(B[0:20]/GAUSS,ENERGIES[0:20,si]/(scipy.constants.h*1e6)-base_energy,c='black',lw=0.5, alpha=0.3,zorder=1)
     N-=1
 
 fig.savefig(f'../images/many-molecules/{MOLECULE_STRING}-zeeman.pdf')
+
+# %%
+# ui = np.where((UNCOUPLED_LABELS_D[:, 0] == 0) & (UNCOUPLED_LABELS_D[:, 1] == 0) & (UNCOUPLED_LABELS_D[:, 2] == 3)& (UNCOUPLED_LABELS_D[:, 2] == 7))[0][0]
+
+# print(list(enumerate(UNCOUPLED_LABELS_D)))
+STATES[:,96,label_to_state_no(1,8,0)]
+
+
 
 # %% [markdown]
 """
@@ -501,15 +511,20 @@ for i, focus_state_index in enumerate(accessible_state_indices):
 # Generic Optimisation Routine
 """
 
+# %%
+a = 0.01*(muN)*B_NOISE/(scipy.constants.h)
+b = 4*(np.pi**2) * 1 / (1e6)**2
 
 # %%
-def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B_STEPS,
+print(a,b)
+
+
+# %%
+def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B_STEPS, allow_travel=True,
                      rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False,
-                     plot=True, table_len=8, latex_table=False, save_name=None):
+                     plot=True, table_len=8, latex_table=False, x_plots=4, y_plots=1, save_name=None):
     n_comb = len(possibilities)
     n_waves = len(possibilities[0]) - 1 # NOTE: assumes paths are the same length
-    x_plots = 4
-    y_plots = 1
     n_plots = x_plots*y_plots
     consider_top=max(n_plots,table_len)
     print(n_comb, "combinations to consider")
@@ -530,15 +545,23 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         this_rating = np.ones((B_STEPS),dtype=np.double)
         
         # Find path to get there from initial state
-        this_unpol_distance_fid = np.exp(-np.min(cumulative_unpol_fidelity_from_initials[:,:,desired_indices],axis=(1,2)))
-        if rate_unpol_distance_fid:
-            this_rating *= this_unpol_distance_fid
-            if np.max(this_rating) < worst_rating_so_far:
-                continue
-        this_pol_distance_fid = np.exp(-np.min(cumulative_pol_fidelity_from_initials[:,:,desired_indices],axis=(1,2)))
-        if rate_pol_distance_fid:
-            this_rating *= this_pol_distance_fid
-            if np.max(this_rating) < worst_rating_so_far:
+        if allow_travel:
+            this_unpol_distance_fid = np.exp(-np.min(cumulative_unpol_fidelity_from_initials[:,:,desired_indices],axis=(1,2)))
+            if rate_unpol_distance_fid:
+                this_rating *= this_unpol_distance_fid
+                if np.max(this_rating) < worst_rating_so_far:
+                    continue
+            this_pol_distance_fid = np.exp(-np.min(cumulative_pol_fidelity_from_initials[:,:,desired_indices],axis=(1,2)))
+            if rate_pol_distance_fid:
+                this_rating *= this_pol_distance_fid
+                if np.max(this_rating) < worst_rating_so_far:
+                    continue
+        else:
+            intersection = np.any(np.isin(desired_indices, INITIAL_STATE_INDICES, assume_unique=True))
+            if intersection:
+                this_unpol_distance_fid = np.ones(B_STEPS)
+                this_pol_distance_fid = np.ones(B_STEPS)
+            else:
                 continue
         
         # Simulate microwave transfers to find fidelity *within structure*
@@ -570,10 +593,11 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
                 sign_changes = np.where(np.diff(np.sign(required_deviation)))[0]
                 mask = np.ones(max_bi, dtype=bool)
                 mask[sign_changes] = False
+                mask[sign_changes+1] = False
                 this_rating[mask] = 0
             if np.max(this_rating) < worst_rating_so_far:
                 continue
-
+                
         this_peak_rating = np.max(this_rating)
         better_array = this_peak_rating - peak_rating
         partitioned_array = np.argpartition(better_array, -2)
@@ -599,8 +623,11 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
     
     # Display Results
     if plot:
-        fig, axs = plt.subplots(y_plots,x_plots,figsize=(10,3.5),dpi=100,sharex=True,sharey=True,constrained_layout=True)
-        axs = axs.flatten()
+        fig, axs = plt.subplots(y_plots,x_plots,figsize=(10,10),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+        if n_plots > 1:
+            axs = axs.flatten()
+        else:
+            axs = [axs]
     headers = ['States', 'B(G)', 'MagDipFid', 'UnPolFid', 'PolFid', 'UnPolDistFid', 'PolDistFid', 'UnPolOverall', 'PolOverall', 'Rating', 'Path']
     data = []
     for i in range(table_len):
@@ -696,7 +723,7 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             text_file.write(tabulate(data, headers=headers, tablefmt="latex_raw"))
     if plot:
         fig.supxlabel('Magnetic Field $B_z$ (G)')
-        fig.supylabel('Rating Components')
+        fig.supylabel('Rating Components 9\'s')
         if save_name is not None:
             fig.savefig(f'../images/many-molecules/{save_name}.pdf')
 
@@ -770,8 +797,16 @@ for N1 in [1]: #range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],table_len=20,required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",
-                 rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False)
+maximise_fid_dev(possibilities_d[:,:],table_len=50,x_plots=5,y_plots=5,required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=False)
+
+# %% [markdown]
+"""
+# Varying time for a set of states
+"""
+
+# %%
+possibilities = [[(0,8,1),(1,6,1),(0,6,0)]]
+maximise_fid_dev(possibilities,latex_table=True,table_len=2,save_name=f"{MOLECULE_STRING}-2-state",x_plots=1,y_plots=1)
 
 # %% [markdown]
 """
@@ -792,8 +827,26 @@ for N1 in range(0,N_MAX): #[1]:#
                     states.append([(N1,MF1_D,i),(N2,MF2_D,j)])           
 states=np.array(states)
 
+# %%
+label_degeneracy(5,0)
+
+# %%
+per_mn = 64
+n_max = 6
+bytes_per_float = 4
+values_per_pair = 3
+b_steps = 1000
+degeneracy = 32
+connectivity = 6*degeneracy
+
+
+
+total_bytes = per_mn*(n_max+1)**2 * ((bytes_per_float*values_per_pair) * b_steps) * connectivity
+print(f"{total_bytes*1e-6}MB")
+
 # %% tags=[]
-maximise_fid_dev(states,latex_table=True,save_name=f"{MOLECULE_STRING}-2-state")
+maximise_fid_dev(states,latex_table=True,save_name=f"{MOLECULE_STRING}-2-state", table_len=20,
+                rate_deviation_fid=False, rate_unpol_distance_fid=False, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False,)
 
 # %% [markdown]
 """

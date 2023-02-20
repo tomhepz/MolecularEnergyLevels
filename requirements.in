@@ -11,3 +11,4 @@ mpl_interactions[jupyter]
 pyvis
 tqdm
 tabulate
+numba
