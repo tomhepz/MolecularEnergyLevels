@@ -913,4 +913,323 @@ states=np.array(states)
 # %%
 maximise_fid_dev(states,loop=True,latex_table=True,save_name=f"{MOLECULE_STRING}-4-state")
 
+# %% [markdown]
+"""
+# Optimise in terms of t_g
+"""
+
 # %%
+states = [(0,8,1),(1,8,0),(0,8,0)]
+desired_indices = [label_d_to_node_index(*label) for label in states]
+
+
+# Find best B for minimum dipole deviation
+all_moments = MAGNETIC_MOMENTS[:,desired_indices]
+this_deviation = np.abs((np.amax(all_moments,axis=1) - np.amin(all_moments,axis=1)))
+
+DESIRED_FIDELITY = 0.999
+
+# required_deviation = all_moments[:,0]-all_moments[:,2]
+# sign_changes = np.where(np.diff(np.sign(required_deviation)))[0]
+# mask = np.ones(max_bi, dtype=bool)
+# mask[sign_changes] = False
+# mask[sign_changes+1] = False
+# this_rating[mask] = 0
+
+# Find best times
+t_required_global_max_unpol = np.zeros(B_STEPS, dtype=np.double)
+t_required_global_max_pol = np.zeros(B_STEPS, dtype=np.double)
+for from_label, to_label in zip(states, states[1:]):
+    if from_label[0]>to_label[0]:
+        from_label,to_label = to_label,from_label
+
+    P=(from_label[0]-to_label[0])*(to_label[1]-from_label[1])
+    if P == 0:
+        section_index = 0
+    elif P == 2:
+        section_index = 1
+    elif P == -2:
+        section_index = 2
+    
+    from_node_index = label_d_to_node_index(*from_label)
+    to_node_index = label_d_to_node_index(*to_label)
+
+    from_neighbours = label_d_to_edge_indices(*from_label)
+    to_neighbours = label_d_to_edge_indices(*to_label)
+
+    specific_up_index = from_neighbours[section_index]+to_label[2]
+    
+    up_node_indices = generated_edge_indices[from_neighbours[0]:from_neighbours[3],1]
+    down_node_indices = generated_edge_indices[to_neighbours[3]:to_neighbours[6],1]
+    
+    deltas_up   = np.abs(ENERGIES[up_node_indices,:] - ENERGIES[to_node_index,:])/H_BAR
+    deltas_down = np.abs(ENERGIES[down_node_indices,:] - ENERGIES[from_node_index,:])/H_BAR
+    
+    mask_up = up_node_indices == to_node_index
+    mask_down = down_node_indices == from_node_index
+    
+    deltas_up[mask_up,:] = 1e9*np.ones(B_STEPS)
+    deltas_down[mask_down,:] = 1e9*np.ones(B_STEPS)
+
+    specific_coupling = COUPLINGS_SPARSE[specific_up_index,:]
+
+    gs_up = np.abs(COUPLINGS_SPARSE[from_neighbours[0]:from_neighbours[3],:]/specific_coupling)
+    gs_down = np.abs(COUPLINGS_SPARSE[to_neighbours[3]:to_neighbours[6],:]/specific_coupling)
+    
+    ###
+    t_required_up_unpol = (2*gs_up*np.pi)/(deltas_up)    
+    t_required_down_unpol = (2*gs_down*np.pi)/(deltas_down)
+    t_required_max_up_unpol = np.max(t_required_up_unpol, axis=0, initial=0)
+    t_required_max_down_unpol = np.max(t_required_down_unpol, axis=0, initial=0)
+    t_required_max_unpol = np.maximum(t_required_max_up_unpol,t_required_max_down_unpol)
+    t_required_global_max_unpol = np.maximum(t_required_max_unpol,t_required_global_max_unpol)
+    
+    start_index_from = from_neighbours[0]
+    start_index_to = to_neighbours[0]
+    t_required_up_pol = t_required_up_unpol[from_neighbours[section_index]-start_index_from:from_neighbours[section_index+1]-start_index_from,:]
+    t_required_down_pol = t_required_down_unpol[to_neighbours[section_index+3]-start_index_to:to_neighbours[section_index+4]-start_index_to,:]
+    t_required_max_up_pol = np.max(t_required_up_pol, axis=0, initial=0)    
+    t_required_max_down_pol = np.max(t_required_down_pol, axis=0, initial=0)
+    t_required_max_pol = np.maximum(t_required_max_up_pol,t_required_max_down_pol)
+    t_required_global_max_pol = np.maximum(t_required_max_pol,t_required_global_max_pol)
+    
+delta_b_required_unpol = (scipy.constants.h) / (this_deviation * t_required_global_max_unpol)
+delta_b_required_pol = (scipy.constants.h) / (this_deviation * t_required_global_max_pol)
+
+
+# %%
+fig,(ax1,ax2,ax3) = plt.subplots(3,1,sharex=True,constrained_layout=True)
+ax1.set_xlim(0,B_MAX/GAUSS)
+
+# Simulate microwave transfers to find fidelity *within structure*
+total_fid_opt = np.ones(B_STEPS,dtype=np.double)
+for from_label, to_label in zip(states, states[1:]):
+    if from_label[0]>to_label[0]:
+        from_label,to_label = to_label,from_label
+    
+    fs_up_opt, fs_down_opt = unpolarised_edge_to_fs(from_label, to_label, t_gate=t_required_global_max_unpol)
+    total_fid_opt *= np.prod(fs_up_opt,axis=0)
+    total_fid_opt *= np.prod(fs_down_opt,axis=0)
+    total_fid_opt *= 4
+
+MAX_TIME_US = 2000
+X=B/GAUSS
+
+Y=t_required_global_max_pol*1e6
+ax1.plot(X,Y,alpha=0.9,c='green') # us
+# ax.fill_between(X, Y, MAX_TIME_US, color= "green", alpha= 0.3)
+
+Y=t_required_global_max_unpol*1e6
+ax1.plot(X,Y,alpha=0.9,c='red') # us
+ax1.set_yscale('log', base=10)
+# ax.fill_between(X, Y, MAX_TIME_US, color= "red", alpha= 0.3)
+
+Y = delta_b_required_pol*1e4*1e3
+ax2.plot(X,Y,alpha=0.9,c='green') # uG
+ax2.set_yscale('log', base=10)
+
+Y = delta_b_required_unpol*1e4*1e3
+ax2.plot(X,Y,alpha=0.9,c='red') # uG
+ax2.set_yscale('log', base=10)
+
+Y = delta_b_required_pol/(t_required_global_max_pol)
+Y_max_arg = np.argmax(Y)
+ax3.plot(X,Y,color='green')
+ax3.set_yscale('log', base=10)
+# ax3.set_title(f"{X[Y_max_arg]:.1f}G")
+for ax in (ax1,ax2,ax3):
+    ax.axvline(X[Y_max_arg],color='green',linewidth=1,dashes=(3,2))
+    
+Y = delta_b_required_unpol/(t_required_global_max_unpol)
+Y_max_arg = np.argmax(Y)
+ax3.plot(X,Y,color='red')
+ax3.set_yscale('log', base=10)
+# ax3.set_title(f"{X[Y_max_arg]:.1f}G")
+for ax in (ax1,ax2,ax3):
+    ax.axvline(X[Y_max_arg],color='red',linewidth=1,dashes=(3,2))
+
+ax1.set_ylabel("$t'_{g}\, (\mu s)$")
+ax2.set_ylabel("$\Delta B'\, (m G)$")
+ax3.set_xlabel("B $(G)$")
+
+t_g_unpol = t_required_global_max_unpol[Y_max_arg] #* (1-d_f)**(-1/2)
+t_g_pol = t_required_global_max_pol[Y_max_arg] #* (1-d_f)**(-1/2)
+d_b_g = delta_b_required_unpol[Y_max_arg] #* (1-d_f)**(3/2)
+
+for d in range(0,5):
+    print(d, "=", 1-10**(-d))
+    print(f"{t_g_unpol * 10**(d/2) * 1e6:.2f}us unpolarised")
+    print(f"{t_g_pol * 10**(d/2) * 1e6:.2f}us polarised")
+    print(f"{d_b_g * 10**(-3*d/2) *1e4*1e3:.2f}mG")
+    print("----")
+
+# ax.set_title("0.999 Fidelity")
+
+# %%
+
+# %%
+
+# %%
+fig,ax = plt.subplots()
+to_plot = label_d_to_edge_indices(0,10,0)
+print(to_plot)
+for i in range(to_plot[0],to_plot[3]):
+    ax.plot(B/GAUSS,np.abs(COUPLINGS_SPARSE[i,:]))
+    
+ax.set_xlim(0,1000)
+ax.set_ylim(0,1)
+
+
+# %% [markdown] tags=[]
+"""
+# Form fidelity
+"""
+
+# %% [markdown]
+"""
+# All pairs best fidelity
+"""
+
+
+# %%
+@jit(nopython=True)
+def twice_average_fidelity(k,g):
+    k2 = k**2
+    k4 = k2**2
+    g2 = g**2
+    g4 = g2**2
+    g2p1 = 1+g2
+    g2p12 = g2p1*g2p1
+    g2p13 = g2p12*g2p1
+    return (g2p12 + k2*(16*g2p1-24) + 16*k4)/(g2p13 + (-8 + 20*g2 + g4)*k2 + 16*k4)
+
+
+# %%
+@jit(nopython=True)
+def twice_average_fidelity(k,g):
+    if np.any(k):
+        return 1-np.abs(g)**2/np.abs(k)**2
+    else:
+        return 0.5*np.ones(k.shape)
+
+
+# %%
+def polarised_edge_to_fs(from_label,to_label,t_gate):
+    P=(from_label[0]-to_label[0])*(to_label[1]-from_label[1])
+    if P == 0:
+        section_index = 0
+    elif P == 2:
+        section_index = 1
+    elif P == -2:
+        section_index = 2
+    
+    from_node_index = label_d_to_node_index(*from_label)
+    to_node_index = label_d_to_node_index(*to_label)
+
+    from_neighbours = label_d_to_edge_indices(*from_label)
+    to_neighbours = label_d_to_edge_indices(*to_label)
+
+    specific_up_index = from_neighbours[section_index]+to_label[2]
+
+    up_node_indices = generated_edge_indices[from_neighbours[section_index]:from_neighbours[section_index+1],1]
+    down_node_indices = generated_edge_indices[to_neighbours[section_index+3]:to_neighbours[section_index+4],1]
+    
+    ks_up   = np.abs((ENERGIES[up_node_indices,:] - ENERGIES[to_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
+    ks_down = np.abs((ENERGIES[down_node_indices,:] - ENERGIES[from_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
+
+    #from->to
+    specific_coupling = COUPLINGS_SPARSE[specific_up_index,:]
+
+    gs_up = COUPLINGS_SPARSE[from_neighbours[section_index]:from_neighbours[section_index+1],:]/specific_coupling
+    gs_down = COUPLINGS_SPARSE[to_neighbours[section_index+3]:to_neighbours[section_index+4],:]/specific_coupling
+
+    fs_up = twice_average_fidelity(ks_up,gs_up)
+    fs_down = twice_average_fidelity(ks_down,gs_down)
+    
+    return fs_up,fs_down
+
+
+# %%
+def unpolarised_edge_to_fs(from_label,to_label,t_gate):
+    P=(from_label[0]-to_label[0])*(to_label[1]-from_label[1])
+    if  P == 0:
+        section_index = 0
+    elif P == 2:
+        section_index = 1
+    elif P == -2:
+        section_index = 2
+    
+    from_node_index = label_d_to_node_index(*from_label)
+    to_node_index = label_d_to_node_index(*to_label)
+
+    from_neighbours = label_d_to_edge_indices(*from_label)
+    to_neighbours = label_d_to_edge_indices(*to_label)
+
+    specific_up_index = from_neighbours[section_index]+to_label[2]
+
+    up_node_indices = generated_edge_indices[from_neighbours[0]:from_neighbours[3],1]
+    down_node_indices = generated_edge_indices[to_neighbours[3]:to_neighbours[6],1]
+    
+    ks_up   = np.abs((ENERGIES[up_node_indices,:] - ENERGIES[to_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
+    ks_down = np.abs((ENERGIES[down_node_indices,:] - ENERGIES[from_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
+
+    #from->to
+    specific_coupling = COUPLINGS_SPARSE[specific_up_index,:]
+
+    gs_up = np.abs(COUPLINGS_SPARSE[from_neighbours[0]:from_neighbours[3],:]/specific_coupling)
+    gs_down = np.abs(COUPLINGS_SPARSE[to_neighbours[3]:to_neighbours[6],:]/specific_coupling)
+
+    fs_up = twice_average_fidelity(ks_up,gs_up)
+    fs_down = twice_average_fidelity(ks_down,gs_down)
+    
+    return fs_up,fs_down
+
+
+# %%
+fs_up, fs_down = unpolarised_edge_to_fs((1,12,0),(2,14,0), t_gate=500*1e-6*np.ones(B_STEPS))
+
+# %%
+fig,ax=plt.subplots()
+ax.plot(B/GAUSS,-np.log10(1-fs_up+1e-12).T,c='red',alpha=0.5)
+ax.plot(B/GAUSS,-np.log10(1-fs_down+1e-12).T,c='blue',alpha=0.5)
+
+fs_tot = np.prod(np.clip(fs_up,0.5,1),axis=0)*np.prod(np.clip(fs_down,0.5,1),axis=0)*4
+ax.plot(B/GAUSS, -np.log10(1-fs_tot+1e-12),c='black',linestyle='dashed')
+
+ax.set_ylim(0,13)
+# plt.show()
+
+# %%
+# Plot Times
+
+# %%
+sil=label_d_to_edge_indices(0,8,1)
+print(sil)
+si = sil[1]+1
+
+fig,(ax1) = plt.subplots(1,1,sharex=True,constrained_layout=True)
+ax1.set_xlim(0,B_MAX/GAUSS)
+ax1.set_yscale('log', base=10)
+
+X=B/GAUSS
+
+Y=T_G_POL[si]*1e6
+ax1.plot(X,Y,alpha=0.9,c='green') # us
+
+Y=T_G_UNPOL[si]*1e6
+ax1.plot(X,Y,alpha=0.9,c='red') # us
+
+
+# %%
+
+# %%
+# Test it makes sense
+test_si = label_d_to_node_index(2,-10,3)
+test_bi = 100
+
+print(cumulative_unpol_fidelity_from_initials[test_si,test_bi])
+
+back_si = test_si
+while back_si >= 0:
+    print(generated_labels[back_si])
+    back_si = predecessor_unpol_fidelity_from_initials[back_si,test_bi]

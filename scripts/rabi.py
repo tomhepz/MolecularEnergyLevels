@@ -335,16 +335,13 @@ ax.set_yscale('log')
 ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
 ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
 
-# twice_average_fidelities = twice_average_fidelity(ks,gs)
-# maximum_fidelities = np.abs((1-(gs/ks)**2))
-
-error = np.abs((twice_average_fidelities-maximum_fidelities))
+error = np.abs((twice_average_fidelities-maximum_fidelities)/twice_average_fidelities)
 
 
 
 # norm_c = colors.Normalize(vmin=-1, vmax=1)
-ax.contourf(ks,gs,np.log10(error+1e-15),20,norm=colors.Normalize(vmin=-20,vmax=0,clip=True))
-ax.contour(ks,gs,np.log10(error+1e-15),[-5,-4,-3,-2,-1],colors='black')
+ax.contourf(ks,gs,np.log10(error+1e-15),20,norm=colors.Normalize(vmin=-20,vmax=2,clip=True))
+ax.contour(ks,gs,np.log10(error+1e-15),[-10,-5,-4,-3,-2,-1,0,1],colors='black')
 # fig.colorbar()
 
 ax.axhline(3.5)
