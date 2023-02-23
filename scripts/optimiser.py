@@ -846,7 +846,8 @@ print(f"{total_bytes*1e-6}MB")
 
 # %% tags=[]
 maximise_fid_dev(states,latex_table=True,save_name=f"{MOLECULE_STRING}-2-state", table_len=20,
-                rate_deviation_fid=False, rate_unpol_distance_fid=False, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False,)
+                rate_deviation_fid=True, rate_unpol_distance_fid=True, rate_pol_distance_fid=False, rate_unpol_fid=False, rate_pol_fid=False,
+                x_plots=4, y_plots=4)
 
 # %% [markdown]
 """
@@ -911,5 +912,3 @@ states=np.array(states)
 
 # %%
 maximise_fid_dev(states,loop=True,latex_table=True,save_name=f"{MOLECULE_STRING}-4-state")
-
-# %%

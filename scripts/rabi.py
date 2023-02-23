@@ -272,7 +272,7 @@ def maximum_fidelity(k,g):
     
     return numerator/denominator
 
-k_exp_range = (-5,9)
+k_exp_range = (-5,5)
 g_exp_range = (-5,5)
 
 ks = np.logspace(*k_exp_range,1000)
@@ -284,7 +284,7 @@ twice_average_fidelities = twice_average_fidelity(ks,gs)
 # maximum_fidelities = maximum_fidelity(ks,gs)
 maximum_fidelities = np.abs((1-(gs/ks)**2))
 
-# %%
+# %% tags=[]
 fig, (axl,axr) = plt.subplots(1,2,figsize=(6,3),sharey=True,constrained_layout=True)
 
 Norm  = colors.Normalize(vmin=0, vmax=1)
@@ -323,22 +323,32 @@ for ax, fidelities in [(axl,twice_average_fidelities),(axr,maximum_fidelities)]:
 fig.savefig('../images/3-level-phase.pdf')
 
 # %%
+twice_average_fidelities[999,0]
+
+# %%
+maximum_fidelities[999,0]
+
+# %%
 fig, ax = plt.subplots(figsize=(5,5))
 ax.set_xscale('log')
 ax.set_yscale('log')
 ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
 ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
 
-twice_average_fidelities = twice_average_fidelity(ks,gs)
-maximum_fidelities = np.abs((1-(gs/ks)**2))
+# twice_average_fidelities = twice_average_fidelity(ks,gs)
+# maximum_fidelities = np.abs((1-(gs/ks)**2))
 
 error = np.abs((twice_average_fidelities-maximum_fidelities))
 
 
 
 # norm_c = colors.Normalize(vmin=-1, vmax=1)
-cf = ax.contourf(ks,gs,error,100,vmin=0,vmax=.00011)
-# ax.contour(ks,gs,error,[0.001,0.01,0.1,1,2,20,200])
+ax.contourf(ks,gs,np.log10(error+1e-15),20,norm=colors.Normalize(vmin=-20,vmax=0,clip=True))
+ax.contour(ks,gs,np.log10(error+1e-15),[-5,-4,-3,-2,-1],colors='black')
+# fig.colorbar()
+
+ax.axhline(3.5)
+ax.axvline(0.5)
 
 
 ax.set_xlabel('$\kappa$')

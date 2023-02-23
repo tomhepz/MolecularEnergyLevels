@@ -60,7 +60,7 @@ plt.rcParams['figure.dpi'] = 200
 MOLECULE_STRING = "Rb87Cs133"
 MOLECULE = Rb87Cs133
 N_MAX=2
-PULSE_TIME_US = 500 #μs
+# PULSE_TIME_US = 500 #μs
 
 GAUSS = 1e-4 # T
 B = np.concatenate([np.arange(0.1,100,0.1),np.arange(100,500,1),np.arange(500,1000,10)]) * GAUSS
@@ -71,7 +71,7 @@ B_STEPS = len(B)
 B_MIN = B[0]
 B_MAX= B[-1]
 
-settings_string = f'{MOLECULE_STRING}NMax{N_MAX}PTime{PULSE_TIME_US}'
+settings_string = f'{MOLECULE_STRING}NMax{N_MAX}'
 
 H_BAR = scipy.constants.hbar
 
@@ -83,7 +83,7 @@ I2_D = round(2*MOLECULE["I2"])
 PER_MN = (I1_D+1)*(I2_D+1)
 N_STATES = PER_MN * (N_MAX+1)**2
 
-PULSE_TIME = PULSE_TIME_US * 1e-6 # s
+# PULSE_TIME = PULSE_TIME_US * 1e-6 # s
 
 # %% [markdown] tags=[]
 """
@@ -137,9 +137,6 @@ state_jump_list = state_jump_list
 def label_d_to_node_index(N,MF_D,d):
     return state_jump_list[N][(2*N + I1_D + I2_D + MF_D)//2]+d
 
-
-# %%
-N_MAX
 
 # %%
 generated_edge_labels = []
@@ -269,7 +266,7 @@ label_d_to_edge_indices(0,10,0)
 
 # %%
 fig,ax = plt.subplots()
-to_plot = label_d_to_edge_indices(0,8,1)
+to_plot = label_d_to_edge_indices(0,10,0)
 print(to_plot)
 for i in range(to_plot[0],to_plot[3]):
     ax.plot(B/GAUSS,np.abs(COUPLINGS_SPARSE[i,:]))
@@ -381,9 +378,6 @@ np.savez_compressed(f'../precomputed/{settings_string}.npz',
 # Form fidelity
 """
 
-# %%
-E_TO_DELTA_PRE = (100*1e-6)/(H_BAR)
-
 
 # %%
 def polarised_edge_to_fs(from_label,to_label,t_gate):
@@ -458,17 +452,14 @@ def unpolarised_edge_to_fs(from_label,to_label,t_gate):
 
 
 # %%
-E_TO_DELTA_PRE = (500*1e-6)/(H_BAR)
-
-# %%
-fs_up, fs_down = unpolarised_edge_to_fs((1,12,0),(2,14,0), t_gate=5000*1e-6)
+fs_up, fs_down = unpolarised_edge_to_fs((1,12,0),(2,14,0), t_gate=500*1e-6*np.ones(B_STEPS))
 
 # %%
 fig,ax=plt.subplots()
 ax.plot(B/GAUSS,-np.log10(1-fs_up+1e-12).T,c='red',alpha=0.5)
 ax.plot(B/GAUSS,-np.log10(1-fs_down+1e-12).T,c='blue',alpha=0.5)
 
-fs_tot = np.prod(fs_up,axis=0)*np.prod(fs_down,axis=0)*4
+fs_tot = np.prod(np.clip(fs_up,0.5,1),axis=0)*np.prod(np.clip(fs_down,0.5,1),axis=0)*4
 ax.plot(B/GAUSS, -np.log10(1-fs_tot+1e-12),c='black',linestyle='dashed')
 
 ax.set_ylim(0,13)
@@ -580,18 +571,15 @@ ax.set_ylim(0,5)
 ax2.set_ylim(0,4000)
 
 
-# %%
-(((4 * np.pi**2 * 1 ** 2 * scipy.constants.h)/((1e6)**2 * 0.01*muN * B_NOISE))**(1/3))*1e6
-
-# %%
-
 # %% [markdown]
 """
 # Optimise for t_gate and delta_b
 """
 
 # %%
-states = [(1,-8,0),(2,-10,0) ]
+# # %%timeit
+
+states = [(0,8,1),(1,8,0),(0,8,0)]
 desired_indices = [label_d_to_node_index(*label) for label in states]
 
 # Find best B for minimum dipole deviation
@@ -648,8 +636,8 @@ for from_label, to_label in zip(states, states[1:]):
     gs_down = np.abs(COUPLINGS_SPARSE[to_neighbours[3]:to_neighbours[6],:]/specific_coupling)
     
     ###
-    t_required_up_unpol = (2*gs_up*np.pi)/(deltas_up*np.sqrt(1-DESIRED_FIDELITY))    
-    t_required_down_unpol = (2*gs_down*np.pi)/(deltas_down*np.sqrt(1-DESIRED_FIDELITY))
+    t_required_up_unpol = (2*gs_up*np.pi)/(deltas_up)    
+    t_required_down_unpol = (2*gs_down*np.pi)/(deltas_down)
     t_required_max_up_unpol = np.max(t_required_up_unpol, axis=0, initial=0)
     t_required_max_down_unpol = np.max(t_required_down_unpol, axis=0, initial=0)
     t_required_max_unpol = np.maximum(t_required_max_up_unpol,t_required_max_down_unpol)
@@ -664,14 +652,13 @@ for from_label, to_label in zip(states, states[1:]):
     t_required_max_pol = np.maximum(t_required_max_up_pol,t_required_max_down_pol)
     t_required_global_max_pol = np.maximum(t_required_max_pol,t_required_global_max_pol)
     
-delta_b_required = (-scipy.constants.h * np.log(DESIRED_FIDELITY)) / (this_deviation * t_required_global_max_unpol)
-  
+delta_b_required_unpol = (scipy.constants.h) / (this_deviation * t_required_global_max_unpol)
+delta_b_required_pol = (scipy.constants.h) / (this_deviation * t_required_global_max_pol)
+
 
 # %%
-  
-
-fig,(ax,ax2) = plt.subplots(2,1)
-ax.set_xlim(0,B_MAX/GAUSS)
+fig,(ax1,ax2,ax3) = plt.subplots(3,1,sharex=True,constrained_layout=True)
+ax1.set_xlim(0,B_MAX/GAUSS)
 
 # Simulate microwave transfers to find fidelity *within structure*
 total_fid_opt = np.ones(B_STEPS,dtype=np.double)
@@ -679,45 +666,63 @@ for from_label, to_label in zip(states, states[1:]):
     if from_label[0]>to_label[0]:
         from_label,to_label = to_label,from_label
     
-    fs_up_opt, fs_down_opt = unpolarised_edge_to_fs(from_label, to_label, t_gate=t_required_global_max)
+    fs_up_opt, fs_down_opt = unpolarised_edge_to_fs(from_label, to_label, t_gate=t_required_global_max_unpol)
     total_fid_opt *= np.prod(fs_up_opt,axis=0)
     total_fid_opt *= np.prod(fs_down_opt,axis=0)
     total_fid_opt *= 4
-
-# ax.plot(B/GAUSS,-np.log10(1-total_fid_opt),c='green',lw=1,alpha=0.7)
-# ax.plot(B/GAUSS,-np.log10(1-this_deviation_fid_opt),c='cyan',lw=1,alpha=0.7)
-
-# ax2 = ax.twinx()
-
-# ax2.plot(B/GAUSS, 10*this_deviation/muN)
 
 MAX_TIME_US = 2000
 X=B/GAUSS
 
 Y=t_required_global_max_pol*1e6
-ax.plot(X,Y,alpha=0.9,c='green') # us
-ax.fill_between(X, Y, MAX_TIME_US, color= "green", alpha= 0.3)
+ax1.plot(X,Y,alpha=0.9,c='green') # us
+# ax.fill_between(X, Y, MAX_TIME_US, color= "green", alpha= 0.3)
 
 Y=t_required_global_max_unpol*1e6
-ax.plot(X,Y,alpha=0.9,c='red') # us
-ax.fill_between(X, Y, MAX_TIME_US, color= "red", alpha= 0.3)
+ax1.plot(X,Y,alpha=0.9,c='red') # us
+ax1.set_yscale('log', base=10)
+# ax.fill_between(X, Y, MAX_TIME_US, color= "red", alpha= 0.3)
 
-Y = delta_b_required*1e4*1e3
-ax2.plot(X,Y,alpha=0.9,c='orange') # uG
-ax2.fill_between(X, 0, Y, color= "orange", alpha= 0.3)
+Y = delta_b_required_pol*1e4*1e3
+ax2.plot(X,Y,alpha=0.9,c='green') # uG
+ax2.set_yscale('log', base=10)
 
+Y = delta_b_required_unpol*1e4*1e3
+ax2.plot(X,Y,alpha=0.9,c='red') # uG
+ax2.set_yscale('log', base=10)
 
-ax.set_ylabel("$t_{gate}\, (\mu s)$")
-ax2.set_ylabel("$\Delta B\, (m G)$")
+Y = delta_b_required_pol/(t_required_global_max_pol)
+Y_max_arg = np.argmax(Y)
+ax3.plot(X,Y,color='green')
+ax3.set_yscale('log', base=10)
+# ax3.set_title(f"{X[Y_max_arg]:.1f}G")
+for ax in (ax1,ax2,ax3):
+    ax.axvline(X[Y_max_arg],color='green',linewidth=1,dashes=(3,2))
+    
+Y = delta_b_required_unpol/(t_required_global_max_unpol)
+Y_max_arg = np.argmax(Y)
+ax3.plot(X,Y,color='red')
+ax3.set_yscale('log', base=10)
+# ax3.set_title(f"{X[Y_max_arg]:.1f}G")
+for ax in (ax1,ax2,ax3):
+    ax.axvline(X[Y_max_arg],color='red',linewidth=1,dashes=(3,2))
 
-ax2.axhline(35,color='black',linewidth=1,dashes=(3,2))
+ax1.set_ylabel("$t'_{g}\, (\mu s)$")
+ax2.set_ylabel("$\Delta B'\, (m G)$")
+ax3.set_xlabel("B $(G)$")
 
-ax.set_ylim(0,MAX_TIME_US)
-ax2.set_ylim(0,50)
+t_g_unpol = t_required_global_max_unpol[Y_max_arg] #* (1-d_f)**(-1/2)
+t_g_pol = t_required_global_max_pol[Y_max_arg] #* (1-d_f)**(-1/2)
+d_b_g = delta_b_required_unpol[Y_max_arg] #* (1-d_f)**(3/2)
 
-ax2.set_xlabel("B $(G)$")
+for d in range(0,5):
+    print(d, "=", 1-10**(-d))
+    print(f"{t_g_unpol * 10**(d/2) * 1e6:.2f}us unpolarised")
+    print(f"{t_g_pol * 10**(d/2) * 1e6:.2f}us polarised")
+    print(f"{d_b_g * 10**(-3*d/2) *1e4*1e3:.2f}mG")
+    print("----")
 
-ax.set_title("0.999 Fidelity")
+# ax.set_title("0.999 Fidelity")
 
 # %% [markdown]
 """
