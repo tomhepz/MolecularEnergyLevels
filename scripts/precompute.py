@@ -38,7 +38,7 @@ from tqdm import tqdm
 from numba import jit
 
 import scipy.constants
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, csgraph
 
 # %%
 import matplotlib.pyplot as plt
@@ -214,7 +214,11 @@ ENERGIES = ENERGIES_before[:,canonical_to_energy_map].T
 STATES = STATES_before[:,:,canonical_to_energy_map] #[b,uncoupled,coupled]
 
 # %%
-MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->bi', STATES.conj(), -Hz, STATES, optimize='optimal')
+fig,ax = plt.subplots()
+ax.plot(B,ENERGIES[0:32,:].T)
+
+# %%
+MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->ib', STATES.conj(), -Hz, STATES, optimize='optimal')
 
 # %%
 dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
@@ -367,7 +371,8 @@ np.savez_compressed(f'../precomputed/{settings_string}.npz',
                     transition_indices = generated_edge_indices, 
                     edge_jump_list = edge_jump_list,
                     
-                    magnetic_moments = MAGNETIC_MOMENTS, 
+                    magnetic_moments = MAGNETIC_MOMENTS,
+                    
                     couplings_sparse = COUPLINGS_SPARSE,
                     transition_gate_times_pol = T_G_POL,
                     transition_gate_times_unpol = T_G_UNPOL,
