@@ -91,7 +91,7 @@ print(f"{N_STATES} states loaded from molecule.")
 GAUSS = 1e-4 # T
 PULSE_TIME = PULSE_TIME_US * 1e-6 # s
 
-B_NOISE = 43 * 1e-6 * GAUSS
+B_NOISE = 35 * 1e-3 * GAUSS
 
 # B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
@@ -797,7 +797,7 @@ for N1 in [1]: #range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],table_len=50,x_plots=5,y_plots=5,required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=False)
+maximise_fid_dev(possibilities_d[:,:],table_len=12,x_plots=4,y_plots=3,required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
 
 # %% [markdown]
 """

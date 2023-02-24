@@ -379,9 +379,13 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
     print(n_comb, "combinations to consider")
     possibilities_indices = np.array([np.array([label_d_to_node_index(*label) for label in possibility]) for possibility in possibilities])
 
-    deviation = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    # deviation = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    unpol_db_req = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    pol_db_req = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    
     unpol_distance_time = np.zeros((B_STEPS, consider_top),dtype=np.double)
     pol_distance_time = np.zeros((B_STEPS, consider_top),dtype=np.double)    
+    
     unpol_time = np.zeros((B_STEPS, consider_top),dtype=np.double)
     pol_time = np.zeros((B_STEPS, consider_top),dtype=np.double)
     
@@ -395,12 +399,16 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         
         # Find path to get there from initial state
         if allow_travel:
-            this_unpol_distance_time = np.min(CUMULATIVE_TIME_FROM_INITIALS_UNPOL[desired_indices,:],axis=0)
+            this_unpol_distance_time_i = np.argmin(CUMULATIVE_TIME_FROM_INITIALS_UNPOL[desired_indices,:],axis=0)
+            this_unpol_distance_time = np.take_along_axis(CUMULATIVE_TIME_FROM_INITIALS_UNPOL[desired_indices,:],np.expand_dims(this_unpol_distance_time_i,axis=0),axis=0)[0]
+            this_unpol_distance_pre = np.take_along_axis(PREDECESSOR_UNPOL[desired_indices,:],np.expand_dims(this_unpol_distance_time_i,axis=0),axis=0)[0]
             if rate_unpol_distance_time:
                 this_rating_time += this_unpol_distance_time
                 if np.min(this_rating_time) > worst_rating_time_so_far:
                     pass
-            this_pol_distance_time = np.min(CUMULATIVE_TIME_FROM_INITIALS_POL[desired_indices,:],axis=0)
+            this_pol_distance_time_i = np.argmin(CUMULATIVE_TIME_FROM_INITIALS_POL[desired_indices,:],axis=0)
+            this_pol_distance_time = np.take_along_axis(CUMULATIVE_TIME_FROM_INITIALS_POL[desired_indices,:],np.expand_dims(this_pol_distance_time_i,axis=0),axis=0)[0]
+            this_pol_distance_pre = np.take_along_axis(PREDECESSOR_POL[desired_indices,:],np.expand_dims(this_pol_distance_time_i,axis=0),axis=0)[0]
             if rate_pol_distance_time:
                 this_rating_time += this_pol_distance_time
                 if np.min(this_rating_time) > worst_rating_time_so_far:
@@ -435,12 +443,10 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         # Find Delta B to get 9's fidelity
         all_moments = MAGNETIC_MOMENTS[desired_indices,:]
         this_deviation = np.abs((np.amax(all_moments,axis=0) - np.amin(all_moments,axis=0)))
-        # this_deviation_fid = np.exp(-(PULSE_TIME/2)*this_deviation*B_NOISE/(scipy.constants.h))
-        delta_b_req_unpol = scipy.constants.h/(this_deviation*this_unpol_t_gate)
-        delta_b_req_pol = scipy.constants.h/(this_deviation*this_pol_t_gate)
-        deviation_cutoff = 0.1*muN
+        this_delta_b_req_unpol = scipy.constants.h/(this_deviation*this_unpol_t_gate)
+        this_delta_b_req_pol = scipy.constants.h/(this_deviation*this_pol_t_gate)
         if rate_deviation:
-            this_rating_time *= (1/delta_b_req_unpol)
+            this_rating_time *= (1/this_delta_b_req_unpol)
             if required_crossing is not None:
                 required_deviation = all_moments[required_crossing[0],:]-all_moments[required_crossing[1],:]
                 sign_changes = np.where(np.diff(np.sign(required_deviation)))[0]
@@ -462,10 +468,14 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         if the_worst_difference < 0:
             peak_rating[the_worst_index] = this_peak_rating
             peak_rating_index[the_worst_index] = i
+
+            # deviation[:,the_worst_index] = this_deviation
+            unpol_db_req[:,the_worst_index] = this_delta_b_req_unpol
+            pol_db_req[:,the_worst_index] = this_delta_b_req_pol
             
             unpol_distance_time[:,the_worst_index] = this_unpol_distance_time
             pol_distance_time[:,the_worst_index] = this_pol_distance_time
-            deviation[:,the_worst_index] = this_deviation
+
             unpol_time[:,the_worst_index] = this_unpol_t_gate
             pol_time[:,the_worst_index] = this_pol_t_gate
         
@@ -483,7 +493,7 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             axs = axs.flatten()
         else:
             axs = [axs]
-    headers = ['States', 'B(G)', 'MagDipFid', 'UnPolFid', 'PolFid', 'UnPolDistFid', 'PolDistFid', 'Rating', 'Path']
+    headers = ['States', 'B(G)', 'UnPolDB', 'PolDB', 'UnPolT(us)', 'PolT(us)', 'UnPolDistT(us)', 'PolDistT(us)', 'Rating', 'Path']
     data = []
     for i in range(table_len):
         besti = order[i]
@@ -495,42 +505,31 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         peak_rating_bi = np.argmin(this_rating)
         peak_rating = this_rating[peak_rating_bi]
         peak_magnetic_field = B[peak_rating_bi]
-        
-        
-        
+
+        this_unpol_db_req = unpol_db_req[:,besti]
+        this_pol_db_req = pol_db_req[:,besti]
         this_unpol_distance_time = unpol_distance_time[:,besti]
         this_pol_distance_time = pol_distance_time[:,besti]
-        this_deviation = deviation[:,besti]
         this_unpol_time = unpol_time[:,besti]
         this_pol_time = pol_time[:,besti]
         
-        # this_unpol_overall = this_deviation_fid*this_unpol_distance_fid*this_unpol_fid
-        # this_pol_overall = this_deviation_fid*this_pol_distance_fid*this_pol_fid
-        
+        peak_unpol_db_req = this_unpol_db_req[peak_rating_bi]
+        peak_pol_db_req = this_pol_db_req[peak_rating_bi]
         peak_pol_distance_time = this_pol_distance_time[peak_rating_bi]
         peak_unpol_distance_time = this_unpol_distance_time[peak_rating_bi]
-        peak_deviation = this_deviation[peak_rating_bi]
         peak_unpol_time = this_unpol_time[peak_rating_bi]
         peak_pol_time = this_pol_time[peak_rating_bi]
-        
-        # peak_unpol_overall = this_unpol_overall[peak_rating_bi]
-        # peak_pol_overall = this_pol_overall[peak_rating_bi]
         
         if plot and i<n_plots:
             ax = axs[i]
             ax.set_xlim(0,B_MAX/GAUSS)
-            ax.set_ylim(0,10)
-
-            # ax.plot(B/GAUSS, this_deviation, linestyle='solid', c='blue', alpha=0.4)
+            ax.set_ylim(0,6)
             
-            ax.plot(B/GAUSS, -np.log10(1e-12+this_unpol_distance_time), linestyle='dashed', c='red', alpha=0.4)
-            ax.plot(B/GAUSS, -np.log10(1e-12+this_pol_distance_time), linestyle='dashed', c='green', alpha=0.4)
+            ax.plot(B/GAUSS, np.log10(1e-12+this_unpol_distance_time*1e6), linestyle='dashed', c='red', alpha=0.4)
+            ax.plot(B/GAUSS, np.log10(1e-12+this_pol_distance_time*1e6), linestyle='dashed', c='green', alpha=0.4)
 
-            ax.plot(B/GAUSS, -np.log10(1e-12+this_unpol_time), linestyle='dotted', c='red', alpha=0.4)
-            ax.plot(B/GAUSS, -np.log10(1e-12+this_pol_time), linestyle='dotted', c='green', alpha=0.4)
-
-            # ax.plot(B/GAUSS, fidelity(this_unpol_overall,d=5), c='red')
-            # ax.plot(B/GAUSS, fidelity(this_pol_overall,d=5), c='green')
+            ax.plot(B/GAUSS, np.log10(1e-12+this_unpol_time*1e6), linestyle='solid', c='red', alpha=0.6)
+            ax.plot(B/GAUSS, np.log10(1e-12+this_pol_time*1e6), linestyle='solid', c='green', alpha=0.6)
             
             at_field = B[peak_rating_bi]/GAUSS
             lower_inset_bi = field_to_bi(at_field-20)
@@ -542,32 +541,30 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             
             ax.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
         
-        # current_back = state_numbers[this_distance_topo_index]
-        # start_index = INITIAL_STATE_INDICES[this_distance_initial_index]
-        # initial_label = LABELS_D[current_back]
-        # predecessor_list = predecessor_fidelity_from_initials[ordered_B[i], this_distance_initial_index,:]
-        # path=f"({initial_label[0]},{initial_label[1]},{initial_label[2]})"
-        # path = [initial_label]
-        # while current_back != start_index:
-        #     current_back = predecessor_list[current_back]
-        #     path.append(LABELS_D[current_back])
-        # if len(path) <= 3:
-        #     path_string = "<".join([label_d_to_string(label) for label in path])
-        # else:
-        #     path_string = "<".join([label_d_to_string(label) for label in path[:1]])
-        #     path_string += f"<(+{len(path)-2})<"
-        #     path_string += "<".join([label_d_to_string(label) for label in path[len(path)-1:]])
+        peak_unpol_distance_pre = PREDECESSOR_UNPOL[:,peak_rating_bi]
+        current_state = state_numbers[this_pol_distance_time_i[peak_rating_bi]]
+        path = []
+        while current_state >= 0:
+            path.append(LABELS_D[current_state])
+            current_state = peak_unpol_distance_pre[current_state]
+            
+        if len(path) <= 3:
+            path_string = "<".join([label_d_to_string(label) for label in path])
+        else:
+            path_string = "<".join([label_d_to_string(label) for label in path[:1]])
+            path_string += f"<(+{len(path)-2})<"
+            path_string += "<".join([label_d_to_string(label) for label in path[len(path)-1:]])
         
-        path_string = "---"
         states_string = ",".join([label_d_to_string(label) for label in state_labels])
         string_list = [states_string,
                        f"{peak_magnetic_field/GAUSS:6.1f}",
-                       peak_deviation,
-                       peak_unpol_time,
-                       peak_pol_time,
-                       peak_unpol_distance_time,
-                       peak_pol_distance_time,
-                       peak_rating,
+                       peak_unpol_db_req,
+                       peak_pol_db_req,
+                       f"{peak_unpol_time*1e6:.3f}",
+                       f"{peak_pol_time*1e6:.3f}",
+                       f"{peak_unpol_distance_time*1e6:.3f}",
+                       f"{peak_pol_distance_time*1e6:.3f}",
+                       f"{peak_rating:.2f}",
                        path_string]
         data.append(string_list)
     
@@ -577,7 +574,7 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             text_file.write(tabulate(data, headers=headers, tablefmt="latex_raw"))
     if plot:
         fig.supxlabel('Magnetic Field $B_z$ (G)')
-        fig.supylabel('Rating Components 9\'s')
+        fig.supylabel('$log_{10} (t)$')
         if save_name is not None:
             fig.savefig(f'../images/many-molecules/{save_name}.pdf')
 
@@ -624,7 +621,7 @@ maximise_fid_dev(possibilities_d[:,:],latex_table=True,required_crossing=[0,2],s
 """
 
 # %%
-print("Robust Storage Qubit N=0 Optimisation")
+print("Robust Storage Qubit N=0 Op}timisation")
 
 possibilities = []
 for N1 in [1]: #range(0,N_MAX+1): #[1]:#
