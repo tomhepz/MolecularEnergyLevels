@@ -59,6 +59,19 @@ plt.rcParams['figure.dpi'] = 200
 # %matplotlib widget
 # %config InlineBackend.figure_format = 'retina'
 
+# %%
+import diatom.hamiltonian as ham
+N,I1,I2 = ham.generate_vecs(0,MOLECULE['I1'],MOLECULE['I2'])
+H_THING = ham.scalar_nuclear(MOLECULE['C4'],I1,I2)
+
+
+
+# %%
+from matplotlib.pyplot import spy
+fig,ax = plt.subplots()
+ax.spy(H_THING.real)
+print(UNCOUPLED_LABELS_D[0:32])
+
 # %% [markdown]
 """
 ## Defining parameters
@@ -664,24 +677,24 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             ax.set_xlim(0,B_MAX/GAUSS)
             ax.set_ylim(0,5)
 
-            ax.plot(B/GAUSS, fidelity(this_deviation_fid,d=5), linestyle='solid', c='blue', alpha=0.4)
+            # ax.plot(B/GAUSS, fidelity(this_deviation_fid,d=5), linestyle='solid', c='blue', alpha=0.4)
             
-            ax.plot(B/GAUSS, fidelity(this_unpol_distance_fid,d=5), linestyle='dashed', c='red', alpha=0.4)
-            ax.plot(B/GAUSS, fidelity(this_pol_distance_fid,d=5), linestyle='dashed', c='green', alpha=0.4)
+            ax.plot(B/GAUSS, fidelity(this_unpol_distance_fid,d=5), linestyle='dashed', c='red', alpha=0.8)
+            ax.plot(B/GAUSS, fidelity(this_pol_distance_fid,d=5), linestyle='dashed', c='green', alpha=0.8)
 
-            ax.plot(B/GAUSS, fidelity(this_unpol_fid,d=5), linestyle='dotted', c='red', alpha=0.4)
-            ax.plot(B/GAUSS, fidelity(this_pol_fid,d=5), linestyle='dotted', c='green', alpha=0.4)
+            ax.plot(B/GAUSS, fidelity(this_unpol_fid,d=5), linestyle='solid', c='red', alpha=0.8)
+            ax.plot(B/GAUSS, fidelity(this_pol_fid,d=5), linestyle='solid', c='green', alpha=0.8)
 
-            ax.plot(B/GAUSS, fidelity(this_unpol_overall,d=5), c='red')
-            ax.plot(B/GAUSS, fidelity(this_pol_overall,d=5), c='green')
+            # ax.plot(B/GAUSS, fidelity(this_unpol_overall,d=5), c='red')
+            # ax.plot(B/GAUSS, fidelity(this_pol_overall,d=5), c='green')
             
             at_field = B[peak_rating_bi]/GAUSS
             lower_inset_bi = field_to_bi(at_field-20)
             upper_inset_bi = field_to_bi(at_field+20)
             
-            axinset = ax.inset_axes([0.65, 0.65, 0.3, 0.3])
-            axinset.plot(B[lower_inset_bi:upper_inset_bi]/GAUSS,MAGNETIC_MOMENTS[lower_inset_bi:upper_inset_bi,state_numbers]/muN)
-            axinset.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
+            # axinset = ax.inset_axes([0.65, 0.65, 0.3, 0.3])
+            # axinset.plot(B[lower_inset_bi:upper_inset_bi]/GAUSS,MAGNETIC_MOMENTS[lower_inset_bi:upper_inset_bi,state_numbers]/muN)
+            # axinset.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
             
             ax.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
         
@@ -762,7 +775,8 @@ for N1 in range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit")
+maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],latex_table=True,save_name=f"{MOLECULE_STRING}-qubit",
+                rate_deviation_fid=False, rate_unpol_distance_fid=True, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False)
 
 # %% [markdown]
 """
@@ -911,4 +925,7 @@ for state_mf in state_mfs:
 states=np.array(states)
 
 # %%
-maximise_fid_dev(states,loop=True,latex_table=True,save_name=f"{MOLECULE_STRING}-4-state")
+maximise_fid_dev(states,loop=True,latex_table=True,table_len=20,save_name=f"{MOLECULE_STRING}-4-state",
+                rate_deviation_fid=False, rate_unpol_distance_fid=False, rate_pol_distance_fid=False, rate_unpol_fid=True, rate_pol_fid=False)
+
+# %%

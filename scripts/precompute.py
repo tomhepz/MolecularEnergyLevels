@@ -58,8 +58,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "Rb87Cs133"
-MOLECULE = Rb87Cs133
+MOLECULE_STRING = "K41Cs133"
+MOLECULE = K41Cs133
 N_MAX=2
 
 GAUSS = 1e-4 # T
@@ -221,6 +221,10 @@ ax.plot(B,ENERGIES[0:32,:].T)
 MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->ib', STATES.conj(), -Hz, STATES, optimize='optimal')
 
 # %%
+fig,ax = plt.subplots()
+ax.plot(B,MAGNETIC_MOMENTS[0:,:].T);
+
+# %%
 dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
 dipole_op_minus = calculate.dipole(N_MAX,I1,I2,1,-1)
 dipole_op_plus = calculate.dipole(N_MAX,I1,I2,1,+1)
@@ -298,20 +302,20 @@ for i,label_pair in enumerate(generated_edge_labels):
     gs_up = np.abs(COUPLINGS_SPARSE[from_neighbours[0]:from_neighbours[3],:]/specific_coupling)
     gs_down = np.abs(COUPLINGS_SPARSE[to_neighbours[3]:to_neighbours[6],:]/specific_coupling)
     
-    r_up_unpol = np.abs(gs_up/deltas_up)
-    r_down_unpol = np.abs(gs_down/deltas_down)
+    r_up_unpol = (4*gs_up**2 + gs_up**4)/(deltas_up**2)
+    r_down_unpol = (4*gs_down**2 + gs_down**4)/(deltas_down**2)
     
     start_index_from = from_neighbours[0]
     start_index_to = to_neighbours[0]
     r_up_pol = r_up_unpol[from_neighbours[section_index]-start_index_from:from_neighbours[section_index+1]-start_index_from,:]
     r_down_pol = r_up_unpol[to_neighbours[section_index+3]-start_index_to:to_neighbours[section_index+4]-start_index_to,:]
     
-    er_unpol = np.sqrt(np.sum(r_up_unpol**2,axis=0)+np.sum(r_down_unpol**2,axis=0))
-    er_pol = np.sqrt(np.sum(r_up_pol**2,axis=0)+np.sum(r_down_pol**2,axis=0))
+    er_unpol = np.sqrt(np.sum(r_up_unpol,axis=0)+np.sum(r_down_unpol,axis=0))
+    er_pol = np.sqrt(np.sum(r_up_pol,axis=0)+np.sum(r_down_pol,axis=0))
     
     ###
-    T_G_UNPOL[i] = 2*np.pi*er_unpol
-    T_G_POL[i] = 2*np.pi*er_pol
+    T_G_UNPOL[i] = np.pi*er_unpol/4
+    T_G_POL[i] = np.pi*er_pol/4
 
 # %% [markdown]
 """

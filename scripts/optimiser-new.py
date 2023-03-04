@@ -47,6 +47,8 @@ from tqdm import tqdm, trange
 import itertools
 import math
 
+from numba import jit
+
 from tabulate import tabulate
 
 # plt.rcParams["text.usetex"] = True
@@ -143,9 +145,6 @@ INITIAL_STATE_INDICES = [label_d_to_node_index(*label_d) for label_d in INITIAL_
 N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
 print("Loaded precomputed data.")
 
-# %%
-MAGNETIC_MOMENTS.shape
-
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[]
 """
 # Helper Functions
@@ -228,10 +227,6 @@ TRANSITION_LABELS_D[label_pair_to_edge_index((1,4,3),(0,2,1))]
 """
 # Zeeman Plot
 """
-
-# %%
-fig,ax = plt.subplots()
-ax.plot(B,ENERGIES[0:32,:].T)
 
 # %%
 print("plotting zeeman diagram...")
@@ -613,7 +608,9 @@ for N1 in range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],latex_table=True,required_crossing=[0,2],save_name=f"{MOLECULE_STRING}-qubit",rate_deviation=True,table_len=20,rate_pol_distance_time=False,rate_pol_time=False,x_plots=4,y_plots=2)
+maximise_fid_dev(possibilities_d[:,:],latex_table=True,required_crossing=[0,2],save_name=f"{MOLECULE_STRING}-qubit",table_len=20,x_plots=4,y_plots=2,
+                 rate_deviation=True,rate_pol_distance_time=False,rate_pol_time=False
+                 )
 
 # %% [markdown]
 """
@@ -740,7 +737,8 @@ for state_mf in state_mfs:
 states=np.array(states)
 
 # %%
-maximise_fid_dev(states,loop=True,latex_table=True,save_name=f"{MOLECULE_STRING}-4-state")
+maximise_fid_dev(states,loop=True,latex_table=True,table_len=20,save_name=f"{MOLECULE_STRING}-4-state",
+                rate_deviation=False, rate_unpol_distance_time=False, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
 
 # %% [markdown] tags=[]
 """
@@ -960,8 +958,8 @@ def polarised_edge_to_fs(from_label,to_label,t_gate):
 
     specific_up_index = from_neighbours[section_index]+to_label[2]
 
-    up_node_indices = generated_edge_indices[from_neighbours[section_index]:from_neighbours[section_index+1],1]
-    down_node_indices = generated_edge_indices[to_neighbours[section_index+3]:to_neighbours[section_index+4],1]
+    up_node_indices = TRANSITION_INDICES[from_neighbours[section_index]:from_neighbours[section_index+1],1]
+    down_node_indices = TRANSITION_INDICES[to_neighbours[section_index+3]:to_neighbours[section_index+4],1]
     
     ks_up   = np.abs((ENERGIES[up_node_indices,:] - ENERGIES[to_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
     ks_down = np.abs((ENERGIES[down_node_indices,:] - ENERGIES[from_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
@@ -996,8 +994,8 @@ def unpolarised_edge_to_fs(from_label,to_label,t_gate):
 
     specific_up_index = from_neighbours[section_index]+to_label[2]
 
-    up_node_indices = generated_edge_indices[from_neighbours[0]:from_neighbours[3],1]
-    down_node_indices = generated_edge_indices[to_neighbours[3]:to_neighbours[6],1]
+    up_node_indices = TRANSITION_INDICES[from_neighbours[0]:from_neighbours[3],1]
+    down_node_indices = TRANSITION_INDICES[to_neighbours[3]:to_neighbours[6],1]
     
     ks_up   = np.abs((ENERGIES[up_node_indices,:] - ENERGIES[to_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
     ks_down = np.abs((ENERGIES[down_node_indices,:] - ENERGIES[from_node_index,:])*(t_gate[None,:])/(scipy.constants.h))
@@ -1015,18 +1013,53 @@ def unpolarised_edge_to_fs(from_label,to_label,t_gate):
 
 
 # %%
-fs_up, fs_down = unpolarised_edge_to_fs((1,12,0),(2,14,0), t_gate=500*1e-6*np.ones(B_STEPS))
+start_label_d = (0,10,0)
+end_label_d = (1,10,1)
+fs_up, fs_down = unpolarised_edge_to_fs(start_label_d, end_label_d, t_gate=500*1e-6*np.ones(B_STEPS))
 
 # %%
 fig,ax=plt.subplots()
-ax.plot(B/GAUSS,-np.log10(1-fs_up+1e-12).T,c='red',alpha=0.5)
-ax.plot(B/GAUSS,-np.log10(1-fs_down+1e-12).T,c='blue',alpha=0.5)
+for f_up in fs_up:
+    if np.allclose(f_up,0.5*np.ones(B_STEPS)):
+        continue
+    ax.plot(B/GAUSS,-np.log10(1-f_up+1e-6).T,c='red',alpha=0.5)
+    
+for f_down in fs_down:
+    if np.allclose(f_down,0.5*np.ones(B_STEPS)):
+        continue
+    ax.plot(B/GAUSS,-np.log10(1-f_down+1e-6).T,c='blue',alpha=0.5)
 
-fs_tot = np.prod(np.clip(fs_up,0.5,1),axis=0)*np.prod(np.clip(fs_down,0.5,1),axis=0)*4
-ax.plot(B/GAUSS, -np.log10(1-fs_tot+1e-12),c='black',linestyle='dashed')
+fs_tot = np.prod(np.clip(fs_up,0.0001,1),axis=0)*np.prod(np.clip(fs_down,0.0001,1),axis=0)*4
+ax.plot(B/GAUSS, -np.log10(1-fs_tot+1e-6),c='black',linestyle='dashed')
 
-ax.set_ylim(0,13)
+ax.set_ylim(0,6)
+ax.set_xlim(0,400)
 # plt.show()
+ax.set_xlabel('Magnetic Field $B_z$ (G)')
+ax.set_ylabel('Fidelity 9\'s per off resonant state')
+ax.set_title(rf"${label_d_to_latex_string(start_label_d)} \rightarrow {label_d_to_latex_string(end_label_d)}$")
+
+# %%
+fig,ax=plt.subplots()
+for f_up in fs_up:
+    if np.allclose(f_up,0.5*np.ones(B_STEPS)):
+        continue
+    ax.plot(B/GAUSS,-np.log10(1-f_up+1e-6).T,c='red',alpha=0.5)
+    
+for f_down in fs_down:
+    if np.allclose(f_down,0.5*np.ones(B_STEPS)):
+        continue
+    ax.plot(B/GAUSS,-np.log10(1-f_down+1e-6).T,c='blue',alpha=0.5)
+
+fs_tot = np.prod(np.clip(fs_up,0.0001,1),axis=0)*np.prod(np.clip(fs_down,0.0001,1),axis=0)*4
+ax.plot(B/GAUSS, -np.log10(1-fs_tot+1e-6),c='black',linestyle='dashed')
+
+ax.set_ylim(0,6)
+ax.set_xlim(0,400)
+# plt.show()
+ax.set_xlabel('Magnetic Field $B_z$ (G)')
+ax.set_ylabel('Fidelity 9\'s per off resonant state')
+ax.set_title(rf"${label_d_to_latex_string(start_label_d)} \rightarrow {label_d_to_latex_string(end_label_d)}$")
 
 # %%
 # Plot Times
@@ -1042,10 +1075,10 @@ ax1.set_yscale('log', base=10)
 
 X=B/GAUSS
 
-Y=T_G_POL[si]*1e6
+Y=TRANSITION_GATE_TIMES_POL[si]*1e6
 ax1.plot(X,Y,alpha=0.9,c='green') # us
 
-Y=T_G_UNPOL[si]*1e6
+Y=TRANSITION_GATE_TIMES_UNPOL[si]*1e6
 ax1.plot(X,Y,alpha=0.9,c='red') # us
 
 
@@ -1053,12 +1086,14 @@ ax1.plot(X,Y,alpha=0.9,c='red') # us
 
 # %%
 # Test it makes sense
-test_si = label_d_to_node_index(2,-10,3)
+test_si = label_d_to_node_index(0,3,2)
 test_bi = 100
 
-print(cumulative_unpol_fidelity_from_initials[test_si,test_bi])
+print(CUMULATIVE_TIME_FROM_INITIALS_UNPOL[test_si,test_bi])
 
 back_si = test_si
 while back_si >= 0:
     print(generated_labels[back_si])
-    back_si = predecessor_unpol_fidelity_from_initials[back_si,test_bi]
+    back_si = PREDECESSOR_UNPOL[back_si,test_bi]
+
+# %%

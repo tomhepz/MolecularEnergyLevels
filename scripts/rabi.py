@@ -196,7 +196,7 @@ ax_r.set_ylabel(r'$\pi_2$')
 """
 
 # %%
-example_points = [(0.5,1,3),(0.1,1,3),(1,4,3),(0.5,0.02,80)]
+example_points = [(3516,118,5),(2**1.5,2**1.5,3),(1,4,3),(0.5,0.04,80)]
 
 # %%
 fig, axs = plt.subplots(2,2,figsize=(6,4.5))
@@ -258,6 +258,9 @@ for i,(k,g,p) in enumerate(example_points):
 def twice_average_fidelity(k,g):
     return ((1 + g**2)**2 + 8*k**2*(-1 + 2*g**2) + 16*k**4)/((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
 
+def minus_fidelity(k,g):
+    return 1-((g**2 * ((1+g**2)**2 + 12*k**2))/((1+g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4))
+
 def maximum_fidelity(k,g):
     phi = np.arccos((k*(18-9*g**2-8*k**2))/(3+3*g**2+4*k**2)**(3/2))/3
     
@@ -281,29 +284,42 @@ gs = np.logspace(*g_exp_range,1000)
 ks, gs = np.meshgrid(ks,gs)
 
 twice_average_fidelities = twice_average_fidelity(ks,gs)
+minus_fidelities = minus_fidelity(ks,gs)
 # maximum_fidelities = maximum_fidelity(ks,gs)
 maximum_fidelities = np.abs((1-(gs/ks)**2))
+perturbation_fidelities = 1-(gs**2)*((1-2*1*ks+ks**2)/(1-2*ks**2+ks**4))
+
+g2 = gs**2
+k2 = ks**2
+expansion_fidelities = 1 - (4*g2+g2**2)/(16*k2) #- (g2)/(4*k2) - (g2**2)/(16*k2)# - (3*g2)/(16*k2**2) + (5*g2**2)/(32*k2**2)
+# expansion_fidelities = 1 - (g2/(k2))
+
+difference = 1-np.abs((twice_average_fidelities-expansion_fidelities))
+
+
+
 
 # %% tags=[]
-fig, (axl,axr) = plt.subplots(1,2,figsize=(6,3),sharey=True,constrained_layout=True)
+fig, (axl,axm,axr,axr2) = plt.subplots(1,4,figsize=(6,3),sharey=True,sharex=True,constrained_layout=True)
 
-Norm  = colors.Normalize(vmin=0, vmax=1)
+Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
 
-noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+# noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+noted_levels=[0.9,0.99,0.999]
 
 
 
 axl.set_ylabel('$\Gamma$')
-for ax, fidelities in [(axl,twice_average_fidelities),(axr,maximum_fidelities)]:
+for ax, fidelities,title in [(axl,twice_average_fidelities,r"$\langle P^{max}_{|1\rangle}\rangle$"),(axm,minus_fidelities,r"$1-\langle P^{max}_{|2\rangle}\rangle$"),(axr,difference,"Error"),(axr2,expansion_fidelities,"expansion")]:
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
     ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
     ax.set_xlabel('$\kappa$')
 
-    k=7
+    k=10
     normalised_fidelies = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
-    cf = ax.contourf(ks,gs,normalised_fidelies,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
+    # cf = ax.contourf(ks,gs,normalised_fidelies,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
     cf = ax.contourf(ks,gs,normalised_fidelies,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
     CS1 = ax.contour(ks,gs,fidelities,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
 
@@ -314,9 +330,17 @@ for ax, fidelities in [(axl,twice_average_fidelities),(axr,maximum_fidelities)]:
 
     labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
     ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions,fontsize='small')
+    ax.set_title(title)
+    
+    ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    
+    ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    
 
-    for k,g,_ in example_points:
-        ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
+#     for k,g,_ in example_points:
+#         ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
 
 
 
@@ -344,8 +368,32 @@ ax.contourf(ks,gs,np.log10(error+1e-15),20,norm=colors.Normalize(vmin=-20,vmax=2
 ax.contour(ks,gs,np.log10(error+1e-15),[-10,-5,-4,-3,-2,-1,0,1],colors='black')
 # fig.colorbar()
 
-ax.axhline(3.5)
-ax.axvline(0.5)
+ax.axhline(2**1.5)
+ax.axvline(1)
+
+
+ax.set_xlabel('$\kappa$')
+
+# %%
+fig, ax = plt.subplots(figsize=(5,5))
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
+
+deltas = np.linspace()
+
+np.pi
+
+
+
+# norm_c = colors.Normalize(vmin=-1, vmax=1)
+ax.contourf(ks,gs,np.log10(error+1e-15),20,norm=colors.Normalize(vmin=-20,vmax=2,clip=True))
+ax.contour(ks,gs,np.log10(error+1e-15),[-10,-5,-4,-3,-2,-1,0,1],colors='black')
+# fig.colorbar()
+
+ax.axhline(2**1.5)
+ax.axvline(1)
 
 
 ax.set_xlabel('$\kappa$')
@@ -460,25 +508,27 @@ ax.plot(times, finals)
 # %%
 fig, ax = plt.subplots()
 
+# 10000,200
+
 INITIAL_STATE = 0
-FIRST = 1e1
-DETUNING = 0.1
+FIRST = 2.43e7
+DETUNING = 10000
 angular = [0, FIRST, FIRST+DETUNING]
 N_STATES = len(angular)
 
 # Construct coupling matrix
 global_coupling = 1e0
 coupling = global_coupling*np.array([
-        [0,1,0.1],
+        [0,1,200],
         [1,0,0],
-        [0.1,0,0]
+        [200,0,0]
         ])
 
 driving = angular[1]-angular[0]
 
 # Construct
-T_MAX = 40*np.pi / global_coupling
-T_STEPS = 111317 
+T_MAX = 5*np.pi / global_coupling
+T_STEPS = 1705829 
 times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
 print("time_step:", DT, "Driving Period: ",2*np.pi/driving, "ratio (hope<1):", DT*driving/(2*np.pi))
 
@@ -537,21 +587,21 @@ ax.plot(times, finals);
 """
 
 # %%
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(3,3))
 
 INITIAL_STATE = 0
 #angular = [0, 1e13, 1e13+1e6]#, 1e13+1e9, 1e13+1e9+1e7]
-angular = [0., 6.15845642e9, 6.15794005e9, 6.15845683e9, 6.15994033e9, 6.15963301e9, 6.15925873e9, 6.15994076e9, 6.15963347e9, 6.15994118e9, 6.16073900e9]
+angular = [0., 6.15845642e9, 6.15794005e9, 6.15994033e9, 6.15963301e9, 6.15925873e9, 6.15994076e9, 6.15963347e9, 6.15994118e9, 6.16073900e9]
 N_STATES = len(angular)
 
 # Construct coupling matrix
-global_coupling = 4e4
+global_coupling = (2*np.pi*4e4)
 coupling = global_coupling*(np.ones(N_STATES)-np.eye(N_STATES))
 
 driving = 6.15845642e9
 
 # Construct
-T_MAX = 3*np.pi / global_coupling
+T_MAX = 2*np.pi / global_coupling
 T_STEPS = 13421
 times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
 
@@ -582,12 +632,12 @@ for i in range(T_STEPS):
     finals.append(np.abs(state)**2)
 
     
-ax.set_xlim(0,T_MAX)
-ax.set_ylim(0,1.1)
-ax.set_xlabel("t (s)")
-ax.set_ylabel("$|c_e|^2$")
+ax.set_xlim(0,T_MAX*1e6)
+ax.set_ylim(0,1)
+ax.set_xlabel("$t (\mu s)$")
+ax.set_ylabel("$|c_i|^2$")
 
-ax.plot(times, finals);
+ax.plot(times*1e6, finals);
 # fig.show()
 
 # %% [markdown]
