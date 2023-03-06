@@ -58,12 +58,12 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "K41Cs133"
-MOLECULE = K41Cs133
+MOLECULE_STRING = "Rb87Cs133"
+MOLECULE = Rb87Cs133
 N_MAX=2
 
 GAUSS = 1e-4 # T
-B = np.concatenate([np.arange(0.1,100,0.1),np.arange(100,500,1),np.arange(500,1000,10)]) * GAUSS
+B = np.concatenate([np.arange(0.001,100,0.1),np.arange(100,500,1),np.arange(500,1001,10)]) * GAUSS
 
 B_STEPS = len(B)
 B_MIN = B[0]
@@ -319,6 +319,32 @@ for i,label_pair in enumerate(generated_edge_labels):
 
 # %% [markdown]
 """
+# Calculate Omegas for each pair
+"""
+
+# %%
+OMEGAS = np.zeros((N_TRANSITIONS,B_STEPS),dtype=np.double)
+
+for i,label_pair in enumerate(generated_edge_labels):
+    from_label = label_pair[0:3]
+    to_label = label_pair[3:6]
+    
+    from_node_index = label_d_to_node_index(*from_label)
+    to_node_index = label_d_to_node_index(*to_label)
+    
+    delta = np.abs(ENERGIES[from_node_index,:] - ENERGIES[to_node_index,:])/H_BAR
+    
+    OMEGAS[i] = delta
+
+# %%
+posind = label_d_to_edge_indices(1,10,0)
+OMEGAS[posind[0]:posind[6],0]
+
+# %%
+len(generated_edge_labels)
+
+# %% [markdown]
+"""
 # Path from initial to any state
 """
 
@@ -380,6 +406,8 @@ np.savez_compressed(f'../precomputed/{settings_string}.npz',
                     couplings_sparse = COUPLINGS_SPARSE,
                     transition_gate_times_pol = T_G_POL,
                     transition_gate_times_unpol = T_G_UNPOL,
+                    
+                    pair_resonance = OMEGAS,
                     
                     cumulative_unpol_time_from_initials = cumulative_unpol_fidelity_from_initials,
                     predecessor_unpol_time_from_initials = predecessor_unpol_fidelity_from_initials,

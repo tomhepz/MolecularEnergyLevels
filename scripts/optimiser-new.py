@@ -131,12 +131,16 @@ PREDECESSOR_POL = data['predecessor_pol_time_from_initials']
 CUMULATIVE_TIME_FROM_INITIALS_UNPOL = data['cumulative_unpol_time_from_initials']
 PREDECESSOR_UNPOL = data['predecessor_unpol_time_from_initials']
 
+PAIR_RESONANCE = data['pair_resonance']
+
 def label_degeneracy(N,MF_D):
     return LABELS_DEGENERACY[N,(MF_D+F_D_MAX)//2]
 
+@jit(nopython=True)
 def label_d_to_node_index(N,MF_D,d):
     return STATE_JUMP_LIST[N,(MF_D+F_D_MAX)//2]+d
 
+@jit(nopython=True)
 def label_d_to_edge_indices(N,MF_D,d): # Returns the start indices of P=0,P=1,P=2, and the next edge
     return EDGE_JUMP_LIST[label_d_to_node_index(N,MF_D,d)]
 
@@ -216,6 +220,7 @@ def field_to_bi(gauss):
 
 
 # %%
+@jit(nopython=True)
 def label_pair_to_edge_index(label1,label2):
     first_indices = label_d_to_edge_indices(*label1)
     section = 3*((label2[0] - label1[0]) < 0) + [0,1,2][(label2[0] - label1[0])*(label1[1] - label2[1])//2]
@@ -364,15 +369,17 @@ net.show('test.html')
 
 
 # %%
+@jit(nopython=True)
 def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B_STEPS, allow_travel=True,
                      rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False,
                      plot=True, table_len=8, latex_table=False, x_plots=4, y_plots=1, save_name=None):
     n_comb = len(possibilities)
     n_waves = len(possibilities[0]) - 1 # NOTE: assumes paths are the same length
     n_plots = x_plots*y_plots
-    consider_top=max(n_plots,table_len)
+    consider_top =max(n_plots,table_len)
     print(n_comb, "combinations to consider")
-    possibilities_indices = np.array([np.array([label_d_to_node_index(*label) for label in possibility]) for possibility in possibilities])
+    possibilities_indices = np.array([np.array([label_d_to_node_index(label[0],label[1],label[2]) for label in possibility]) for possibility in possibilities])
+    print(possibilities_indices)
 
     # deviation = np.zeros((B_STEPS, consider_top),dtype=np.double)
     unpol_db_req = np.zeros((B_STEPS, consider_top),dtype=np.double)
@@ -389,7 +396,8 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
     peak_rating_index = np.zeros((consider_top),dtype=int)
 
     worst_rating_time_so_far = 1e20
-    for i, desired_indices in tqdm(enumerate(possibilities_indices),total=n_comb):
+    # for i, desired_indices in tqdm(enumerate(possibilities_indices),total=n_comb):
+    for i, desired_indices in enumerate(possibilities_indices):
         this_rating_time = np.zeros((B_STEPS),dtype=np.double)
         
         # Find path to get there from initial state
@@ -420,8 +428,26 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         this_unpol_t_gate = np.zeros(B_STEPS,dtype=np.double)
         this_pol_t_gate = np.zeros(B_STEPS,dtype=np.double)
         for n in range(n_waves):
-            this_pol_t_gate = np.maximum(this_pol_t_gate, TRANSITION_GATE_TIMES_POL[label_pair_to_edge_index(LABELS_D[desired_indices[n]],LABELS_D[desired_indices[n+1]]),:])
-            this_unpol_t_gate = np.maximum(this_unpol_t_gate, TRANSITION_GATE_TIMES_UNPOL[label_pair_to_edge_index(LABELS_D[desired_indices[n]],LABELS_D[desired_indices[n+1]]),:])
+            i1 = desired_indices[n]
+            i2 = desired_indices[n+1]
+            l1 = LABELS_D[i1]
+            l2 = LABELS_D[i2]
+            edge_index = label_pair_to_edge_index(l1,l2)
+            this_w = PAIR_RESONANCE[edge_index,:]
+            
+            this_pol_t_gate = np.maximum(this_pol_t_gate, TRANSITION_GATE_TIMES_POL[edge_index,:])
+            this_unpol_t_gate = np.maximum(this_unpol_t_gate, TRANSITION_GATE_TIMES_UNPOL[edge_index,:])
+            
+            for pi in desired_indices: 
+                if pi == i1 or pi == i2:
+                    continue
+                # For all other states, check we don't drive population out with the frequency
+                lo = LABELS_D[pi] 
+                other_state_edge_labels_d = EDGE_JUMP_LIST[pi]
+                other_states_trans_freq = PAIR_RESONANCE[other_state_edge_labels_d[0]:other_state_edge_labels_d[6],:]
+                t_gate_restriction = np.max(np.pi/np.abs(this_w - other_states_trans_freq),axis=0)
+                this_unpol_t_gate = np.maximum(this_unpol_t_gate,t_gate_restriction)
+                    
         if loop:
             this_pol_t_gate = np.maximum(this_pol_t_gate, TRANSITION_GATE_TIMES_POL[label_pair_to_edge_index(LABELS_D[desired_indices[0]],LABELS_D[desired_indices[-1]]),:])
             this_unpol_t_gate = np.maximum(this_unpol_t_gate, TRANSITION_GATE_TIMES_UNPOL[label_pair_to_edge_index(LABELS_D[desired_indices[0]],LABELS_D[desired_indices[-1]]),:])
@@ -459,12 +485,10 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         the_worst_index = partitioned_array[0]
         the_second_worst_index = partitioned_array[1]
         the_worst_difference = better_array[the_worst_index]
-        # print(the_worst_difference)
         if the_worst_difference < 0:
             peak_rating[the_worst_index] = this_peak_rating
             peak_rating_index[the_worst_index] = i
 
-            # deviation[:,the_worst_index] = this_deviation
             unpol_db_req[:,the_worst_index] = this_delta_b_req_unpol
             pol_db_req[:,the_worst_index] = this_delta_b_req_pol
             
@@ -478,7 +502,19 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             worst_rating_time_so_far = max(this_peak_rating,peak_rating[the_second_worst_index])
         else:
             worst_rating_time_so_far = peak_rating[the_worst_index]
+    
+    return (unpol_db_req, 
+            pol_db_req,
+            unpol_distance_time,
+            pol_distance_time,
+            unpol_time,
+            pol_time,
+            rating,
+            peak_rating,
+            peak_rating_index)
 
+# %%
+    
     order = (peak_rating).argsort()
     
     # Display Results
@@ -738,7 +774,7 @@ states=np.array(states)
 
 # %%
 maximise_fid_dev(states,loop=True,latex_table=True,table_len=20,save_name=f"{MOLECULE_STRING}-4-state",
-                rate_deviation=False, rate_unpol_distance_time=False, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
+                rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
 
 # %% [markdown] tags=[]
 """

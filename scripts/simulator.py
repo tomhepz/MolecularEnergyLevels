@@ -16,7 +16,7 @@
 
 # %% [markdown]
 """
-# Import appropriate modules TEST2
+# Import appropriate modules
 """
 
 # %%
@@ -55,19 +55,6 @@ plt.rcParams['figure.dpi'] = 200
 """
 ## Defining parameters
 """
-
-# %%
-# MOLECULE_STRING = "Rb87Cs133"
-# MOLECULE = Rb87Cs133
-# N_MAX=2
-
-# B_MIN_GAUSS = 0.001 #G
-# B_MAX_GAUSS = 1000 #G
-# B_STEPS = 500
-
-# PULSE_TIME_US = 500 #μs
-
-# settings_string = f'{MOLECULE_STRING}NMax{N_MAX}BMin{B_MIN_GAUSS}BMax{B_MAX_GAUSS}BSteps{B_STEPS}PTime{PULSE_TIME_US}'
 
 # %%
 MOLECULE_STRING = "Rb87Cs133"
