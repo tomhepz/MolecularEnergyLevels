@@ -58,8 +58,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "Rb87Cs133"
-MOLECULE = Rb87Cs133
+MOLECULE_STRING = "K40Rb87"
+MOLECULE = K40Rb87
 N_MAX=2
 
 GAUSS = 1e-4 # T

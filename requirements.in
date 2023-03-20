@@ -10,5 +10,6 @@ ipympl
 mpl_interactions[jupyter]
 pyvis
 tqdm
+numba-progress
 tabulate
 numba

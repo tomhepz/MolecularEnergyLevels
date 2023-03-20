@@ -47,7 +47,9 @@ from tqdm import tqdm, trange
 import itertools
 import math
 
-from numba import jit
+from numba import jit, njit
+from numba import njit
+from numba_progress import ProgressBar
 
 from tabulate import tabulate
 
@@ -145,7 +147,7 @@ def label_d_to_edge_indices(N,MF_D,d): # Returns the start indices of P=0,P=1,P=
     return EDGE_JUMP_LIST[label_d_to_node_index(N,MF_D,d)]
 
 INITIAL_STATE_LABELS_D = MOLECULE["StartStates_D"]
-INITIAL_STATE_INDICES = [label_d_to_node_index(*label_d) for label_d in INITIAL_STATE_LABELS_D]
+INITIAL_STATE_INDICES = np.array([label_d_to_node_index(*label_d) for label_d in INITIAL_STATE_LABELS_D])
 N_INITIAL_STATES = len(INITIAL_STATE_INDICES)
 print("Loaded precomputed data.")
 
@@ -222,11 +224,12 @@ def field_to_bi(gauss):
 # %%
 @jit(nopython=True)
 def label_pair_to_edge_index(label1,label2):
-    first_indices = label_d_to_edge_indices(*label1)
+    first_indices = label_d_to_edge_indices(label1[0],label1[1],label1[2])
     section = 3*((label2[0] - label1[0]) < 0) + [0,1,2][(label2[0] - label1[0])*(label1[1] - label2[1])//2]
     return first_indices[section]+label2[2]
 
-TRANSITION_LABELS_D[label_pair_to_edge_index((1,4,3),(0,2,1))]
+# TRANSITION_LABELS_D[label_pair_to_edge_index((1,4,3),(0,2,1))]
+TRANSITION_LABELS_D[label_pair_to_edge_index(np.array([1,4,3]),np.array([0,2,1]))]
 
 # %% [markdown] tags=[]
 """
@@ -301,17 +304,22 @@ fig.savefig(f'../images/many-molecules/{MOLECULE_STRING}-magnetic-dipole-moments
 """
 
 # %%
-CUTOFF_TIME = 1e-4
+latex_string = r"\begin{tikzpicture}[node distance=2em, every node/.style={rounded corners, draw, minimum size=2em}]"
+
+CUTOFF_TIME = 1.5e-5
 CUTOFF_BI = field_to_bi(181.5)
 from pyvis.network import Network
-net = Network(height="1000px",width="75%",directed=False,notebook=True,cdn_resources='in_line',neighborhood_highlight=False,layout=None,filter_menu=False)
-net.repulsion()
+# net = Network(height="1000px",width="75%",directed=False,notebook=True,cdn_resources='in_line',neighborhood_highlight=False,layout=None,filter_menu=False)
+# net.repulsion()
 
 edges = set()
 
 cm = matplotlib.cm.get_cmap('Spectral')
 colours = cm(np.linspace(0,1,N_INITIAL_STATES))
 colours_hex = [matplotlib.colors.to_hex(c, keep_alpha=False) for c in colours]
+
+latex_string += "\n    "
+latex_string += "\draw [ultra thick, ->] (0,10) -- (0,0);"
 
 
 for si in range(N_STATES):
@@ -336,12 +344,14 @@ for si in range(N_STATES):
             (
                 start_label[1]-current_back_label[1]
                 + 2*start_label[2]/label_degeneracy(start_label[0],start_label[1])
-            )*0.05)*(1-this_y)**(0.1) + current_back
+            )*0.05)*(1-this_y)**(0.1) + current_back*0.7
     
         state_label = LABELS_D[si]
         label_string = label_d_to_string(state_label)
         # net.add_node(int(si),label=label_d_to_string(LABELS_D[si]),x=this_x*2000,y=this_y*2000, value=float(time),color=colours_hex[0],title=f"{label_string}, cumulative time={time}",physics=False)
-        net.add_node(int(si),label=label_d_to_string(LABELS_D[si]),x=this_x*2000,y=this_y*4000,color=colours_hex[0],title=f"{label_string}, cumulative time={time}",physics=False)
+        # net.add_node(int(si),label=label_d_to_string(LABELS_D[si]),x=this_x*2000,y=this_y*4000,color=colours_hex[0],title=f"{label_string}, cumulative time={time}",physics=False)
+        latex_string += "\n    "
+        latex_string += fr"\node[draw] at ({(this_x-20.8)*10:.1f}, {this_y*10:.3f}) ({si}) {{${label_d_to_latex_string(LABELS_D[si])}$}};"
         
     
 pcol = ['blue','red','green']
@@ -352,14 +362,16 @@ for s,t in edges:
     P = round((LABELS_D[from_i][1] - LABELS_D[to_i][1])*(LABELS_D[from_i][0] - LABELS_D[to_i][0])/2)
     ecol = pcol[P]
     net.add_edge(int(t),int(s), value=fidelity(fid,d=5),arrowStrikethrough=False,color=ecol,title=f"{fid}",physics=True)
+    latex_string += "\n    "
+    latex_string += fr"\draw [thick, {ecol}] ({int(t)}) -- ({int(s)});"
     
-
+latex_string += "\n"
+latex_string += "\end{tikzpicture}"
             
 
 # net.prep_notebook()
 # net.show_buttons(filter_=['physics'])
-net.toggle_physics(False)
-net.show('test.html')
+print(latex_string)
 
 
 # %% [markdown]
@@ -369,144 +381,188 @@ net.show('test.html')
 
 
 # %%
-@jit(nopython=True)
-def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B_STEPS, allow_travel=True,
+@njit(nogil=True)
+def maximise_fid_dev(possibilities, progress_proxy, loop=False, required_crossing=None, max_bi=B_STEPS, allow_travel=True,
                      rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False,
-                     plot=True, table_len=8, latex_table=False, x_plots=4, y_plots=1, save_name=None):
+                     coincidental_outflow=True
+                    ):
     n_comb = len(possibilities)
-    n_waves = len(possibilities[0]) - 1 # NOTE: assumes paths are the same length
-    n_plots = x_plots*y_plots
-    consider_top =max(n_plots,table_len)
+    n_states = len(possibilities[0])
+    n_waves = n_states - 1 + loop # NOTE: assumes paths are the same length
+    consider_top = 50
     print(n_comb, "combinations to consider")
-    possibilities_indices = np.array([np.array([label_d_to_node_index(label[0],label[1],label[2]) for label in possibility]) for possibility in possibilities])
-    print(possibilities_indices)
+    
+    possibilities_indices = np.zeros((n_comb,n_states),dtype=np.uint)
+    for combi, possibility in enumerate(possibilities):
+        for posi, label in enumerate(possibility):
+            node_index = label_d_to_node_index(label[0],label[1],label[2])
+            possibilities_indices[combi,posi]=node_index
 
-    # deviation = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    unpol_db_req = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    pol_db_req = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    unpol_db_req = np.zeros((consider_top, B_STEPS),dtype=np.double)
+    pol_db_req = np.zeros((consider_top, B_STEPS),dtype=np.double)
     
-    unpol_distance_time = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    pol_distance_time = np.zeros((B_STEPS, consider_top),dtype=np.double)    
+    unpol_distance_time = np.zeros((consider_top, B_STEPS),dtype=np.double)
+    unpol_distance_start = np.zeros((consider_top,B_STEPS),dtype=np.uint)
+    pol_distance_time = np.zeros((consider_top, B_STEPS),dtype=np.double)   
+    pol_distance_start = np.zeros((consider_top,B_STEPS),dtype=np.uint)
     
-    unpol_time = np.zeros((B_STEPS, consider_top),dtype=np.double)
-    pol_time = np.zeros((B_STEPS, consider_top),dtype=np.double)
+    unpol_time = np.zeros((consider_top, B_STEPS),dtype=np.double)
+    pol_time = np.zeros((consider_top, B_STEPS),dtype=np.double)
     
-    rating = 1e20*np.ones((B_STEPS,consider_top),dtype=np.double)
+    rating = 1e20*np.ones((consider_top, B_STEPS),dtype=np.double)
     peak_rating =  1e20*np.ones((consider_top),dtype=np.double)
-    peak_rating_index = np.zeros((consider_top),dtype=int)
+    peak_rating_index = np.zeros((consider_top),dtype=np.uint)
 
     worst_rating_time_so_far = 1e20
-    # for i, desired_indices in tqdm(enumerate(possibilities_indices),total=n_comb):
     for i, desired_indices in enumerate(possibilities_indices):
         this_rating_time = np.zeros((B_STEPS),dtype=np.double)
         
         # Find path to get there from initial state
         if allow_travel:
             this_unpol_distance_time_i = np.argmin(CUMULATIVE_TIME_FROM_INITIALS_UNPOL[desired_indices,:],axis=0)
-            this_unpol_distance_time = np.take_along_axis(CUMULATIVE_TIME_FROM_INITIALS_UNPOL[desired_indices,:],np.expand_dims(this_unpol_distance_time_i,axis=0),axis=0)[0]
-            this_unpol_distance_pre = np.take_along_axis(PREDECESSOR_UNPOL[desired_indices,:],np.expand_dims(this_unpol_distance_time_i,axis=0),axis=0)[0]
+            dims_unpol = np.expand_dims(this_unpol_distance_time_i,axis=0)
+            this_unpol_distance_time = np.take_along_axis(CUMULATIVE_TIME_FROM_INITIALS_UNPOL[desired_indices,:],dims_unpol,axis=0)[0]
+            this_unpol_distance_pre = np.take_along_axis(PREDECESSOR_UNPOL[desired_indices,:],dims_unpol,axis=0)[0]
             if rate_unpol_distance_time:
                 this_rating_time += this_unpol_distance_time
-                if np.min(this_rating_time) > worst_rating_time_so_far:
-                    pass
             this_pol_distance_time_i = np.argmin(CUMULATIVE_TIME_FROM_INITIALS_POL[desired_indices,:],axis=0)
-            this_pol_distance_time = np.take_along_axis(CUMULATIVE_TIME_FROM_INITIALS_POL[desired_indices,:],np.expand_dims(this_pol_distance_time_i,axis=0),axis=0)[0]
-            this_pol_distance_pre = np.take_along_axis(PREDECESSOR_POL[desired_indices,:],np.expand_dims(this_pol_distance_time_i,axis=0),axis=0)[0]
+            dims_pol = np.expand_dims(this_pol_distance_time_i,axis=0)
+            this_pol_distance_time = np.take_along_axis(CUMULATIVE_TIME_FROM_INITIALS_POL[desired_indices,:],dims_pol,axis=0)[0]
+            this_pol_distance_pre = np.take_along_axis(PREDECESSOR_POL[desired_indices,:],dims_pol,axis=0)[0]
             if rate_pol_distance_time:
                 this_rating_time += this_pol_distance_time
-                if np.min(this_rating_time) > worst_rating_time_so_far:
-                    pass
         else:
-            intersection = np.any(np.isin(desired_indices, INITIAL_STATE_INDICES, assume_unique=True))
-            if intersection:
-                this_unpol_distance_time = np.zeros(B_STEPS)
-                this_pol_distance_time = np.zeros(B_STEPS)
-            else:
-                continue
+            for desired_index in desired_indices:
+                if desired_index in INITIAL_STATE_INDICES:
+                    this_unpol_distance_time = np.zeros(B_STEPS)
+                    this_pol_distance_time = np.zeros(B_STEPS)
         
         # Find t_gate to get 9's fidelity
         this_unpol_t_gate = np.zeros(B_STEPS,dtype=np.double)
         this_pol_t_gate = np.zeros(B_STEPS,dtype=np.double)
-        for n in range(n_waves):
-            i1 = desired_indices[n]
-            i2 = desired_indices[n+1]
+        for wn in range(n_waves):
+            i1 = desired_indices[(wn)%n_states]
+            i2 = desired_indices[(wn+1)%n_states]
             l1 = LABELS_D[i1]
             l2 = LABELS_D[i2]
+            P = (l2[0]-l1[0])*(l2[1]-l1[1]) # -2 , 0 , 2
+            if P == 0:
+                section_index = 0
+            elif P == 2:
+                section_index = 2 # NOTE: need to fix polarisations
+            elif P == -2:
+                section_index = 1
+            
             edge_index = label_pair_to_edge_index(l1,l2)
             this_w = PAIR_RESONANCE[edge_index,:]
             
             this_pol_t_gate = np.maximum(this_pol_t_gate, TRANSITION_GATE_TIMES_POL[edge_index,:])
             this_unpol_t_gate = np.maximum(this_unpol_t_gate, TRANSITION_GATE_TIMES_UNPOL[edge_index,:])
             
-            for pi in desired_indices: 
-                if pi == i1 or pi == i2:
-                    continue
-                # For all other states, check we don't drive population out with the frequency
-                lo = LABELS_D[pi] 
-                other_state_edge_labels_d = EDGE_JUMP_LIST[pi]
-                other_states_trans_freq = PAIR_RESONANCE[other_state_edge_labels_d[0]:other_state_edge_labels_d[6],:]
-                t_gate_restriction = np.max(np.pi/np.abs(this_w - other_states_trans_freq),axis=0)
-                this_unpol_t_gate = np.maximum(this_unpol_t_gate,t_gate_restriction)
+            if coincidental_outflow:
+                for pi in desired_indices: 
+                    if pi == i1 or pi == i2:
+                        continue
+                    # For all other states, check we don't drive population out with the frequency
+                    lo = LABELS_D[pi]
+
+                    upwards = ((l2[0]-l1[0]==1) and (lo[0]==l1[0])) or ((l2[0]-l1[0]==-1) and (lo[0]==l2[0]))
+                    skip=0
+                    if not upwards:
+                        skip=3
+
+                    other_state_edge_labels_d = EDGE_JUMP_LIST[pi]
+
+                    other_states_trans_freq_unpol = PAIR_RESONANCE[other_state_edge_labels_d[skip]:other_state_edge_labels_d[skip+3],:]
+                    t_gate_restriction_unpol = np.pi * np.sqrt(np.sum(1/(np.abs(this_w - other_states_trans_freq_unpol)**2),axis=0))
+                    this_unpol_t_gate = np.maximum(t_gate_restriction_unpol,this_unpol_t_gate)
+
+                    other_states_trans_freq_pol = PAIR_RESONANCE[other_state_edge_labels_d[skip+section_index]:other_state_edge_labels_d[skip+section_index+1],:]
+                    t_gate_restriction_pol = np.pi * np.sqrt(np.sum(1/(np.abs(this_w - other_states_trans_freq_pol)**2),axis=0))
+                    this_pol_t_gate = np.maximum(t_gate_restriction_pol,this_pol_t_gate)
                     
-        if loop:
-            this_pol_t_gate = np.maximum(this_pol_t_gate, TRANSITION_GATE_TIMES_POL[label_pair_to_edge_index(LABELS_D[desired_indices[0]],LABELS_D[desired_indices[-1]]),:])
-            this_unpol_t_gate = np.maximum(this_unpol_t_gate, TRANSITION_GATE_TIMES_UNPOL[label_pair_to_edge_index(LABELS_D[desired_indices[0]],LABELS_D[desired_indices[-1]]),:])
-        
+                    # if lo[0] == 0 and lo[1] == 8 and np.min(this_unpol_t_gate)*1e6<100:
+                    #     test = TRANSITION_LABELS_D[other_state_edge_labels_d[skip]:other_state_edge_labels_d[skip+3]]
+                    #     print(l1)
+                    #     print(l2)
+                    #     print(test)
+                    #     print(np.min(this_unpol_t_gate)*1e6)
+
         if rate_unpol_time:
             this_rating_time += 10*this_unpol_t_gate # NOTE: THIS 10 is ARBITRARY!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            if np.min(this_rating_time) > worst_rating_time_so_far:
-                pass
+            # if np.min(this_rating_time) > worst_rating_time_so_far:
+            #     pass
         if rate_pol_time:
             this_rating_time += 10*this_pol_t_gate
-            if np.min(this_rating_time) > worst_rating_time_so_far:
-                pass
+            # if np.min(this_rating_time) > worst_rating_time_so_far:
+            #     pass
                 
         # Find Delta B to get 9's fidelity
-        all_moments = MAGNETIC_MOMENTS[desired_indices,:]
-        this_deviation = np.abs((np.amax(all_moments,axis=0) - np.amin(all_moments,axis=0)))
+        all_moments = MAGNETIC_MOMENTS[desired_indices,:].real
+        this_deviation = np.empty((B_STEPS),dtype=np.double)
+        for bi in range(B_STEPS):
+            max_here = all_moments[0,bi]
+            min_here = all_moments[0,bi]
+            for lsi in range(1,n_states):
+                this_moment = all_moments[lsi,bi]
+                if this_moment > max_here:
+                    max_here=this_moment    
+                if this_moment < min_here:
+                    min_here=this_moment
+            this_deviation[bi] = max_here-min_here
+
         this_delta_b_req_unpol = scipy.constants.h/(this_deviation*this_unpol_t_gate)
         this_delta_b_req_pol = scipy.constants.h/(this_deviation*this_pol_t_gate)
         if rate_deviation:
-            this_rating_time *= (1/this_delta_b_req_unpol)
+            this_rating_time *= (this_delta_b_req_unpol)**(-1/3)
             if required_crossing is not None:
                 required_deviation = all_moments[required_crossing[0],:]-all_moments[required_crossing[1],:]
-                sign_changes = np.where(np.diff(np.sign(required_deviation)))[0]
-                mask = np.ones(max_bi, dtype=bool)
+                sign_changes = np.where(np.diff(required_deviation<0))[0]
+                mask = np.ones(max_bi, dtype=np.bool_)
                 mask[sign_changes] = False
                 mask[sign_changes+1] = False
                 this_rating_time[mask] += 1e20
-            if np.min(this_rating_time) > worst_rating_time_so_far:
-                pass
+            # if np.min(this_rating_time) > worst_rating_time_so_far:
+            #     pass
                 
         
         this_peak_rating = np.min(this_rating_time)
         better_array = this_peak_rating - peak_rating # want to be negative
-        partitioned_array = np.argpartition(better_array, 2)
-        the_worst_index = partitioned_array[0]
-        the_second_worst_index = partitioned_array[1]
+        the_worst_index = better_array.argmin()
+        temp_worst = better_array[the_worst_index]
+        better_array[the_worst_index] = 1e20
+        the_second_worst_index = better_array.argmin()
+        better_array[the_worst_index] = temp_worst
         the_worst_difference = better_array[the_worst_index]
         if the_worst_difference < 0:
             peak_rating[the_worst_index] = this_peak_rating
             peak_rating_index[the_worst_index] = i
 
-            unpol_db_req[:,the_worst_index] = this_delta_b_req_unpol
-            pol_db_req[:,the_worst_index] = this_delta_b_req_pol
+            unpol_db_req[the_worst_index] = this_delta_b_req_unpol
+            pol_db_req[the_worst_index] = this_delta_b_req_pol
             
-            unpol_distance_time[:,the_worst_index] = this_unpol_distance_time
-            pol_distance_time[:,the_worst_index] = this_pol_distance_time
+            unpol_distance_time[the_worst_index] = this_unpol_distance_time
+            pol_distance_time[the_worst_index] = this_pol_distance_time
+            
+            unpol_distance_start[the_worst_index] = this_unpol_distance_time_i
+            pol_distance_start[the_worst_index] = this_pol_distance_time_i
 
-            unpol_time[:,the_worst_index] = this_unpol_t_gate
-            pol_time[:,the_worst_index] = this_pol_t_gate
+            unpol_time[the_worst_index] = this_unpol_t_gate
+            pol_time[the_worst_index] = this_pol_t_gate
         
-            rating[:,the_worst_index] = this_rating_time
+            rating[the_worst_index] = this_rating_time
             worst_rating_time_so_far = max(this_peak_rating,peak_rating[the_second_worst_index])
         else:
             worst_rating_time_so_far = peak_rating[the_worst_index]
+        progress_proxy.update(1)
+        
     
     return (unpol_db_req, 
             pol_db_req,
             unpol_distance_time,
             pol_distance_time,
+            unpol_distance_start,
+            pol_distance_start,
             unpol_time,
             pol_time,
             rating,
@@ -514,17 +570,22 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             peak_rating_index)
 
 # %%
-    
+def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_distance_time, pol_distance_time, unpol_distance_start, pol_distance_start, unpol_time, pol_time, rating, peak_rating, peak_rating_index,
+                             plot=True, table_len=8, latex_table=False, x_plots=4, y_plots=1, save_name=None):
+
     order = (peak_rating).argsort()
+    n_plots = x_plots*y_plots
     
     # Display Results
     if plot:
-        fig, axs = plt.subplots(y_plots,x_plots,figsize=(10,10),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+        fig, axs = plt.subplots(y_plots,x_plots,figsize=(10.5,3),dpi=100,sharex=True,sharey=True,constrained_layout=True)
         if n_plots > 1:
             axs = axs.flatten()
         else:
             axs = [axs]
-    headers = ['States', 'B(G)', 'UnPolDB', 'PolDB', 'UnPolT(us)', 'PolT(us)', 'UnPolDistT(us)', 'PolDistT(us)', 'Rating', 'Path']
+    
+    textheaders = ['states', 'B(G)', 'unpolDB(mG)', 'polDB(mG)', 'unpoltg(us)', 'poltg(us)', 'unpoltd(us)', 'poltd(us)', 'rating', 'path']
+    latexheaders = [r'{States}', r'{$B(G)$}', r'{$\Delta B^{\text{unpol}}(mG)$}', r'{$\Delta B^{\text{pol}}(mG)$}', r'{$t^{\text{unpol}}_{g}(\mu s)$}', r'{$t^{\text{pol}}_{g}(\mu s)$}', r'{$t^{\text{unpol}}_{d}(\mu s)$}', r'{$t^{\text{pol}}_{d}(\mu s)$}', r'{Rating}', r'{Path}']
     data = []
     for i in range(table_len):
         besti = order[i]
@@ -532,22 +593,26 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
         state_labels = possibilities[combi]
         state_numbers = np.array([label_d_to_node_index(*state_label) for state_label in state_labels])
         
-        this_rating = rating[:,besti]
+        this_rating = rating[besti]
         peak_rating_bi = np.argmin(this_rating)
         peak_rating = this_rating[peak_rating_bi]
         peak_magnetic_field = B[peak_rating_bi]
 
-        this_unpol_db_req = unpol_db_req[:,besti]
-        this_pol_db_req = pol_db_req[:,besti]
-        this_unpol_distance_time = unpol_distance_time[:,besti]
-        this_pol_distance_time = pol_distance_time[:,besti]
-        this_unpol_time = unpol_time[:,besti]
-        this_pol_time = pol_time[:,besti]
+        this_unpol_db_req = unpol_db_req[besti]
+        this_pol_db_req = pol_db_req[besti]
+        this_unpol_distance_time = unpol_distance_time[besti]
+        this_pol_distance_time = pol_distance_time[besti]
+        this_unpol_distance_start = unpol_distance_start[besti]
+        this_pol_distance_start = pol_distance_start[besti]
+        this_unpol_time = unpol_time[besti]
+        this_pol_time = pol_time[besti]
         
         peak_unpol_db_req = this_unpol_db_req[peak_rating_bi]
         peak_pol_db_req = this_pol_db_req[peak_rating_bi]
         peak_pol_distance_time = this_pol_distance_time[peak_rating_bi]
         peak_unpol_distance_time = this_unpol_distance_time[peak_rating_bi]
+        peak_unpol_distance_start = this_unpol_distance_start[peak_rating_bi]
+        peak_pol_distance_start = this_pol_distance_start[peak_rating_bi]
         peak_unpol_time = this_unpol_time[peak_rating_bi]
         peak_pol_time = this_pol_time[peak_rating_bi]
         
@@ -573,7 +638,7 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             ax.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
         
         peak_unpol_distance_pre = PREDECESSOR_UNPOL[:,peak_rating_bi]
-        current_state = state_numbers[this_pol_distance_time_i[peak_rating_bi]]
+        current_state = state_numbers[peak_unpol_distance_start]
         path = []
         while current_state >= 0:
             path.append(LABELS_D[current_state])
@@ -586,23 +651,25 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             path_string += f"<(+{len(path)-2})<"
             path_string += "<".join([label_d_to_string(label) for label in path[len(path)-1:]])
         
+        n_show=3
         states_string = ",".join([label_d_to_string(label) for label in state_labels])
         string_list = [states_string,
                        f"{peak_magnetic_field/GAUSS:6.1f}",
-                       peak_unpol_db_req,
-                       peak_pol_db_req,
-                       f"{peak_unpol_time*1e6:.3f}",
-                       f"{peak_pol_time*1e6:.3f}",
-                       f"{peak_unpol_distance_time*1e6:.3f}",
-                       f"{peak_pol_distance_time*1e6:.3f}",
-                       f"{peak_rating:.2f}",
-                       path_string]
+                       f"{peak_unpol_db_req*1e3*(10**(-3*n_show/2))/GAUSS:.6f}",
+                       f"{peak_pol_db_req*1e3*(10**(-3*n_show/2))/GAUSS:.6f}",
+                       peak_unpol_time*1e6*(10**(n_show/2)),
+                       f"{peak_pol_time*1e6*(10**(n_show/2)):.3f}",
+                       f"{peak_unpol_distance_time*1e6*(10**(n_show/2)):.3f}",
+                       f"{peak_pol_distance_time*1e6*(10**(n_show/2)):.3f}",
+                       f"{peak_rating*1e6:.2f}",
+                       path_string
+                       ]
         data.append(string_list)
     
-    html_table = tabulate(data, headers=headers,tablefmt="html")
+    html_table = tabulate(data, headers=textheaders,tablefmt="html")
     if latex_table:
         with open(f"../tables/{save_name}.tex", "w") as text_file:
-            text_file.write(tabulate(data, headers=headers, tablefmt="latex_raw"))
+            text_file.write(tabulate(data, headers=latexheaders, tablefmt="latex_raw"))
     if plot:
         fig.supxlabel('Magnetic Field $B_z$ (G)')
         fig.supylabel('$log_{10} (t)$')
@@ -610,6 +677,7 @@ def maximise_fid_dev(possibilities, loop=False, required_crossing=None, max_bi=B
             fig.savefig(f'../images/many-molecules/{save_name}.pdf')
 
     return html_table
+
 
 # %% [markdown]
 """
@@ -644,9 +712,13 @@ for N1 in range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],latex_table=True,required_crossing=[0,2],save_name=f"{MOLECULE_STRING}-qubit",table_len=20,x_plots=4,y_plots=2,
-                 rate_deviation=True,rate_pol_distance_time=False,rate_pol_time=False
-                 )
+with ProgressBar(total=len(possibilities_d[:])) as progress: 
+    r = maximise_fid_dev(possibilities_d[:], progress, allow_travel=True, 
+                     required_crossing=(0,2), rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
+
+
+# %%
+show_optimisation_results(possibilities_d,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-qubit",latex_table=True)
 
 # %% [markdown]
 """
@@ -681,7 +753,14 @@ for N1 in [1]: #range(0,N_MAX+1): #[1]:#
 possibilities_d = np.array(possibilities)
 
 # %%
-maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
+# maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
+with ProgressBar(total=len(possibilities_d)) as progress:
+    r = maximise_fid_dev(possibilities_d[:,:], progress, allow_travel=True,
+                     required_crossing=(0,2), rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
+
+
+# %%
+show_optimisation_results(possibilities_d,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-qubit-zero",latex_table=True)
 
 # %% [markdown]
 """
@@ -707,9 +786,17 @@ for N1 in range(0,N_MAX): #[1]:#
                     states.append([(N1,MF1_D,i),(N2,MF2_D,j)])           
 states=np.array(states)
 
+# %%
+states.shape
+
 # %% tags=[]
-maximise_fid_dev(states,latex_table=True,save_name=f"{MOLECULE_STRING}-2-state", table_len=20,
-                rate_deviation=False, rate_unpol_distance_time=False, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False,)
+# maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
+with ProgressBar(total=len(states)) as progress:
+    r = maximise_fid_dev(states[:,:], progress, allow_travel=True,
+                     rate_deviation=False, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
+
+# %%
+show_optimisation_results(states,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-2-state",latex_table=True)
 
 # %% [markdown]
 """
@@ -734,8 +821,17 @@ for MF1_D in range(-F1_D,F1_D+1,2):
                         states.append([(N1,MF1_D,i),(N2,MF2_D,j),(N3,MF3_D,k)])           
 states=np.array(states)
 
+# %%
+states.shape
+
 # %% tags=[]
-maximise_fid_dev(states,latex_table=True, save_name=f"{MOLECULE_STRING}-3-state")
+# maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
+with ProgressBar(total=len(states)) as progress:
+    r = maximise_fid_dev(states, progress, allow_travel=True,
+                     rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
+
+# %%
+show_optimisation_results(states,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-3-state",latex_table=True)
 
 # %% [markdown]
 """
@@ -772,9 +868,14 @@ for state_mf in state_mfs:
                     
 states=np.array(states)
 
+# %% tags=[]
+# maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
+with ProgressBar(total=len(states)) as progress:
+    r = maximise_fid_dev(states[:], progress, allow_travel=True,
+                     rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
+
 # %%
-maximise_fid_dev(states,loop=True,latex_table=True,table_len=20,save_name=f"{MOLECULE_STRING}-4-state",
-                rate_deviation=True, rate_unpol_distance_time=True, rate_pol_distance_time=False, rate_unpol_time=True, rate_pol_time=False)
+show_optimisation_results(states,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-4-state",latex_table=True)
 
 # %% [markdown] tags=[]
 """

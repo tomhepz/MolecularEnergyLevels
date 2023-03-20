@@ -196,7 +196,7 @@ ax_r.set_ylabel(r'$\pi_2$')
 """
 
 # %%
-example_points = [(3516,118,5),(2**1.5,2**1.5,3),(1,4,3),(0.5,0.04,80)]
+example_points = [(10000,200,2),(100,100,0.02),(1000,158.74,2),(1000,0.01,2)]
 
 # %%
 fig, axs = plt.subplots(2,2,figsize=(6,4.5))
@@ -207,6 +207,7 @@ for i,(k,g,p) in enumerate(example_points):
     a=roots[0]
     b=roots[1]
     c=roots[2]
+    print(a,b,c)
 
     normalisation = 1/((a-b)*(c-a)*(b-c))**2
 
@@ -215,6 +216,7 @@ for i,(k,g,p) in enumerate(example_points):
         [(b - c)*(2*k+a),(c - a)*(2*k+b),(a - b)*(2*k+c)],
         [g*a*(b - c),g*b*(c - a),g*c*(a - b)]
     ])
+    print(coefficients)
 
     averages = np.sum(coefficients**2,1)
 
@@ -275,8 +277,8 @@ def maximum_fidelity(k,g):
     
     return numerator/denominator
 
-k_exp_range = (-5,5)
-g_exp_range = (-5,5)
+k_exp_range = (-1,12)
+g_exp_range = (-1,12)
 
 ks = np.logspace(*k_exp_range,1000)
 gs = np.logspace(*g_exp_range,1000)
@@ -294,13 +296,13 @@ k2 = ks**2
 expansion_fidelities = 1 - (4*g2+g2**2)/(16*k2) #- (g2)/(4*k2) - (g2**2)/(16*k2)# - (3*g2)/(16*k2**2) + (5*g2**2)/(32*k2**2)
 # expansion_fidelities = 1 - (g2/(k2))
 
-difference = 1-np.abs((twice_average_fidelities-expansion_fidelities))
+difference = (np.log10(1-twice_average_fidelities+1e-9)-np.log10(1-expansion_fidelities+1e-9))#/np.log10(1-twice_average_fidelities+1e-9)
 
 
 
 
 # %% tags=[]
-fig, (axl,axm,axr,axr2) = plt.subplots(1,4,figsize=(6,3),sharey=True,sharex=True,constrained_layout=True)
+fig, (axl,axm,axr) = plt.subplots(1,3,figsize=(6,3),sharey=True,sharex=True,constrained_layout=True)
 
 Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
 
@@ -310,7 +312,7 @@ noted_levels=[0.9,0.99,0.999]
 
 
 axl.set_ylabel('$\Gamma$')
-for ax, fidelities,title in [(axl,twice_average_fidelities,r"$\langle P^{max}_{|1\rangle}\rangle$"),(axm,minus_fidelities,r"$1-\langle P^{max}_{|2\rangle}\rangle$"),(axr,difference,"Error"),(axr2,expansion_fidelities,"expansion")]:
+for ax, fidelities,title in [(axl,twice_average_fidelities,r"$\langle P^{max}_{|1\rangle}\rangle$"),(axm,1-minus_fidelities,r"$1-\langle P^{max}_{|2\rangle}\rangle$"),(axr,np.abs(twice_average_fidelities-minus_fidelities),"expansion")]:
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
@@ -336,6 +338,7 @@ for ax, fidelities,title in [(axl,twice_average_fidelities,r"$\langle P^{max}_{|
     ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
     
     ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2**(2/3)*(10**k_exp_range[0])**(2/3),2**(2/3)*(10**k_exp_range[1])**(2/3)],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
     ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
     
 
@@ -344,7 +347,38 @@ for ax, fidelities,title in [(axl,twice_average_fidelities,r"$\langle P^{max}_{|
 
 
 
+
+
 fig.savefig('../images/3-level-phase.pdf')
+
+# %%
+fig, ax = plt.subplots(1,1,figsize=(4,4),constrained_layout=True)
+
+# Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
+
+# noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+# noted_levels=[0.9,0.99,0.999]
+
+# print(difference)
+
+
+ax.set_ylabel('$\Gamma$')
+ax.set_xlabel('$\kappa$')
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+ax.set_ylim(10**g_exp_range[0],10)
+cf = ax.contourf(ks,gs,difference,40,cmap='RdYlGn',alpha=1,vmin=-1,vmax=1, extend='both')
+CS1 = ax.contour(ks,gs,difference,[0.001,0.01,0.1,1], colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
+CS1 = ax.contour(ks,gs,difference,[-1,-0.1,-0.01,-0.001], colors='k',linestyles='dotted',linewidths=0.5,alpha=0.5,zorder=20)
+
+ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+cbar = fig.colorbar(cf)
+
+# fig.savefig('../images/3-level-phase-error.pdf')
 
 # %%
 twice_average_fidelities[999,0]
@@ -711,10 +745,7 @@ coupling = np.array([[0.0, 1.0, 0.8],
 
 max_probabilities = peakProbabilities(angular,coupling,pulse_time=10,time_steps=10000)
 
-# print(max_probabilities)
-# fig,ax = plt.subplots()
-# ax.plot(np.abs(vectors[:,1]))
-# fig.show()
+print(max_probabilities)
 
 # %%
 F_N = 50

@@ -58,8 +58,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "Na23Rb87"
-MOLECULE = Na23Rb87  
+MOLECULE_STRING = "Rb87Cs133"
+MOLECULE = Rb87Cs133  
 N_MAX=2
 
 CHAR_MU = (1/(np.abs(MOLECULE["Mu1"])*MOLECULE["I1"]+np.abs(MOLECULE["Mu2"])*MOLECULE["I2"]))
@@ -229,7 +229,7 @@ MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->ib', STATES.conj(), -Hz, STATES, optim
 
 # %%
 fig,ax = plt.subplots()
-ax.plot(B*CHAR_B,(MAGNETIC_MOMENTS[:,:].T)*CHAR_MU,lw=0.5)
+ax.plot(B*CHAR_B,(MAGNETIC_MOMENTS[0:PER_MN,:].T)*CHAR_MU,lw=0.5)
 ax.set_xlim(0,CHAR_LENGTHS)
 ax.set_ylim(-1.1,1.1)
 ax.set_xlabel("$B_z\,\,(c_4 i_1 i_2)/(\mu_1 i_1+\mu_2 i_2)$")
