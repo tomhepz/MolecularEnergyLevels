@@ -226,7 +226,8 @@ def label_pair_to_edge_index(label1,label2):
     return first_indices[section]+label2[2]
 
 # TRANSITION_LABELS_D[label_pair_to_edge_index((1,4,3),(0,2,1))]
-TRANSITION_LABELS_D[label_pair_to_edge_index(np.array([1,4,3]),np.array([0,2,1]))]
+# TRANSITION_LABELS_D[label_pair_to_edge_index(np.array([1,4,3]),np.array([0,2,1]))]
+
 
 # %% [markdown] tags=[]
 """
@@ -244,17 +245,17 @@ chosen_coupling_labels = [
 ]
 
 # With what desired rabi period
-global_pulse_time = 1018.57 * 1e-6 #s
+global_pulse_time = 297.829 * 1e-6 #s
 chosen_pulse_time = [global_pulse_time]*len(chosen_coupling_labels)
 
 # At what magnetic field
-chosen_bi = field_to_bi(930)
+chosen_bi = field_to_bi(458)
 
 # Only simulate other states that have strong off resonant coupling
-cutoff = 0.9999999 # =0 for only these =1 for all states
+# cutoff = 0.9999999 # =0 for only these =1 for all states
         
 # Simulation resolution
-T_STEPS =  [803989,314927,195931,65519,41443,21319,9391,50][3]*2
+T_STEPS =  [803989,314927,195931,65519,41443,21319,9391,50][4]*2
 
 # Simulation time length (how many Rabi periods to show)
 TIME = chosen_pulse_time[0]*2
@@ -262,6 +263,7 @@ TIME = chosen_pulse_time[0]*2
 # %%
 chosen_state_labels = []
 # example_points = []
+POLARISED = False
 
 needed_states = np.full(N_STATES, False)
 for l in chosen_states_coupling_labels:
@@ -272,59 +274,10 @@ for l in chosen_states_coupling_labels:
 
 chosen_states_labels = LABELS_D[needed_states]
 
+# %%
 chosen_states_coupling_subindices = [np.where((chosen_states_labels[:, 0] == N) & (chosen_states_labels[:, 1] == MF) & (chosen_states_labels[:, 2] == k))[0][0] for N,MF,k in chosen_states_coupling_labels]
 chosen_states_indices = np.array([label_d_to_node_index(*label) for label in chosen_states_labels])
 chosen_number_of_states = len(chosen_states_indices)
-
-# %%
-# example_points = []
-
-# for (al,bl),pt in zip(chosen_coupling_labels, chosen_pulse_time):
-    
-
-# if cutoff == 0:
-#     chosen_states_labels = chosen_states_coupling_labels
-# elif cutoff == 1:
-#     chosen_states_labels = LABELS_D
-# else:
-#     needed_states = np.full(N_STATES, False)
-#     print(f"These states passed the cutoff ({cutoff}):")
-#     for (al,bl),pt in zip(chosen_coupling_labels, chosen_pulse_time):
-#         ai = label_to_state_no(*al)
-#         bi = label_to_state_no(*bl)
-#         ks_up = np.abs((ENERGIES[chosen_bi, :] - ENERGIES[chosen_bi, bi, None]) * pt / scipy.constants.h)
-#         ks_down = np.abs((ENERGIES[chosen_bi, :] - ENERGIES[chosen_bi, ai, None]) * pt / scipy.constants.h)
-
-#         gs_unpolarised_up = np.abs(COUPLINGS[chosen_bi, ai, :]/COUPLINGS[chosen_bi, ai, bi])
-#         gs_unpolarised_down = np.abs(COUPLINGS[chosen_bi, bi, :]/COUPLINGS[chosen_bi, ai, bi])
-
-#         fidelities_unpolarised_up = twice_average_fidelity(ks_up,gs_unpolarised_up)
-#         fidelities_unpolarised_down = twice_average_fidelity(ks_down,gs_unpolarised_down)
-        
-#         fidelities_unpolarised_up_simple = simple_fidelity(ks_up,gs_unpolarised_up)
-#         fidelities_unpolarised_down_simple = simple_fidelity(ks_down,gs_unpolarised_down)
-        
-#         needed_states = needed_states + (fidelities_unpolarised_up < cutoff) + (fidelities_unpolarised_down < cutoff)
-#         chosen_states_labels = LABELS_D[needed_states]
-        
-#         for k_up,g_unpolarised_up,f_up,f_up_s in zip(ks_up,gs_unpolarised_up,fidelities_unpolarised_up,fidelities_unpolarised_up_simple):
-#             if f_up < cutoff:
-#                 print(f_up,f_up_s)
-#                 example_points.append((k_up,g_unpolarised_up,1))
-                
-#         for k_down,g_unpolarised_down,f_down,f_down_s in zip(ks_down,gs_unpolarised_down,fidelities_unpolarised_down,fidelities_unpolarised_down_simple):
-#             if f_down < cutoff:
-#                 print(f_down,f_down_s)
-#                 example_points.append((k_down,g_unpolarised_down,1))
-                
-
-#     print(chosen_states_labels)
-    
-
-    
-# chosen_states_coupling_subindices = [np.where((chosen_states_labels[:, 0] == N) & (chosen_states_labels[:, 1] == MF) & (chosen_states_labels[:, 2] == k))[0][0] for N,MF,k in chosen_states_coupling_labels]
-# chosen_states_indices = np.array([label_to_state_no(*label) for label in chosen_states_labels])
-# chosen_number_of_states = len(chosen_states_indices)
 
 # %%
 # Compute further constants and indices from molecular parameters
@@ -446,7 +399,7 @@ ax.plot(times[::resolution]*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
     ax.plot(times[::resolution]*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
     
-print(f"{np.max(probabilities[:,chosen_states_coupling_subindices[2]]):.10f}")
+print(f"{np.max(probabilities[:,chosen_states_coupling_subindices[1]]):.10f}")
 fig.savefig(f'../images/{MOLECULE_STRING}-2-state-qubit-sim-a.pdf')
 
 # 0.9956479464

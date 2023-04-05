@@ -58,8 +58,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "K40Rb87"
-MOLECULE = K40Rb87
+MOLECULE_STRING = "Rb87Cs133"
+MOLECULE = Rb87Cs133
 N_MAX=2
 
 GAUSS = 1e-4 # T
@@ -255,6 +255,11 @@ for ii, (N,MF_D,d) in tqdm(enumerate(generated_labels),total=N_STATES):
     COUPLINGS_SPARSE[edge_indices[4]:edge_indices[5],:] = COUPLINGS_PLUS[:,ii,down_pos].T
     COUPLINGS_SPARSE[edge_indices[5]:edge_indices[6],:] = COUPLINGS_MINUS[:,ii,down_minus].T
 
+# %%
+test_indices = label_d_to_edge_indices(1,4,0)
+i_n = 5
+generated_edge_labels[test_indices[i_n]:test_indices[i_n+1]]
+
 # %% [markdown]
 """
 # Optimise for t_gate in each transition
@@ -266,16 +271,18 @@ T_G_POL = np.zeros((N_TRANSITIONS,B_STEPS),dtype=np.double)
 for i,label_pair in enumerate(generated_edge_labels):
     from_label = label_pair[0:3]
     to_label = label_pair[3:6]
+
     if from_label[0]>to_label[0]:
         from_label,to_label = to_label,from_label
 
-    P=(from_label[0]-to_label[0])*(to_label[1]-from_label[1])
+    P=(to_label[0]-from_label[0])*(to_label[1]-from_label[1])
     if P == 0:
         section_index = 0
-    elif P == 2:
-        section_index = 1
     elif P == -2:
+        section_index = 1
+    elif P == 2:
         section_index = 2
+
     
     from_node_index = label_d_to_node_index(*from_label)
     to_node_index = label_d_to_node_index(*to_label)
@@ -291,29 +298,25 @@ for i,label_pair in enumerate(generated_edge_labels):
     deltas_up   = np.abs(ENERGIES[up_node_indices,:] - ENERGIES[to_node_index,:])/H_BAR
     deltas_down = np.abs(ENERGIES[down_node_indices,:] - ENERGIES[from_node_index,:])/H_BAR
     
-    mask_up = up_node_indices == to_node_index
-    mask_down = down_node_indices == from_node_index
+    deltas_up[up_node_indices == to_node_index,:] += 1e15
+    deltas_down[down_node_indices == from_node_index,:] += 1e15
     
-    deltas_up[mask_up,:] += 1e9
-    deltas_down[mask_down,:] += 1e9
-
     specific_coupling = COUPLINGS_SPARSE[specific_up_index,:]
 
     gs_up = np.abs(COUPLINGS_SPARSE[from_neighbours[0]:from_neighbours[3],:]/specific_coupling)
     gs_down = np.abs(COUPLINGS_SPARSE[to_neighbours[3]:to_neighbours[6],:]/specific_coupling)
-    
+
     r_up_unpol = (4*gs_up**2 + gs_up**4)/(deltas_up**2)
     r_down_unpol = (4*gs_down**2 + gs_down**4)/(deltas_down**2)
     
     start_index_from = from_neighbours[0]
     start_index_to = to_neighbours[0]
     r_up_pol = r_up_unpol[from_neighbours[section_index]-start_index_from:from_neighbours[section_index+1]-start_index_from,:]
-    r_down_pol = r_up_unpol[to_neighbours[section_index+3]-start_index_to:to_neighbours[section_index+4]-start_index_to,:]
+    r_down_pol = r_down_unpol[to_neighbours[section_index+3]-start_index_to:to_neighbours[section_index+4]-start_index_to,:]
     
     er_unpol = np.sqrt(np.sum(r_up_unpol,axis=0)+np.sum(r_down_unpol,axis=0))
     er_pol = np.sqrt(np.sum(r_up_pol,axis=0)+np.sum(r_down_pol,axis=0))
     
-    ###
     T_G_UNPOL[i] = np.pi*er_unpol/4
     T_G_POL[i] = np.pi*er_pol/4
 

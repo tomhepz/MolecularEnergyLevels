@@ -190,6 +190,32 @@ ax_r.set_ylabel(r'$\pi_2$')
 # fig.savefig('../images/2-level-rabi.pdf')
 
 
+# %% [markdown] tags=[]
+"""
+# Analytic 4-State loop
+"""
+
+# %%
+fig, ax = plt.subplots(1,figsize=(3.0,2.5))
+
+t = np.linspace(0,4*np.pi,200)
+
+ax.plot(t,np.cos(t/2)**4,'b',alpha=0.8)
+ax.plot(t,np.sin(t)**2/4,'r--',alpha=0.8)
+ax.plot(t,np.sin(t)**2/4,'g:',alpha=0.8)
+ax.plot(t,np.sin(t/2)**4,'purple',alpha=0.8)
+    
+ax.set_xlim(0,4*np.pi)
+ax.set_ylim(0,1)
+ax.xaxis.set_major_formatter(FuncFormatter(
+   lambda val,pos: '{:.0g}$\pi$'.format(val/np.pi) if val !=0 else '0'
+))
+ax.xaxis.set_major_locator(MultipleLocator(base=np.pi))
+ax.set_xlabel(r'$\tau$')
+ax.set_ylabel(r'$|\langle\psi(t)|\psi(t)\rangle|^2$')
+
+fig.savefig("../images/4-loop-population.pdf")
+
 # %% [markdown]
 """
 # Analytic 3-State

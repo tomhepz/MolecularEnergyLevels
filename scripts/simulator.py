@@ -88,6 +88,9 @@ B_NOISE = 35 * 1e-3 * GAUSS
 # B, B_STEP_SIZE = np.linspace(B_MIN, B_MAX, B_STEPS, retstep=True) #T 
 
 # %%
+D_0
+
+# %%
 print("Loading precomputed data...")
 data = np.load(f'../precomputed/{settings_string}.npz')
 
@@ -263,14 +266,14 @@ def field_to_bi(gauss):
 
 # %%
 # Driven couplings between states
-chosen_states_coupling_labels = np.array([(0,8,1),(1,10,2),(2,10,3),(1,8,3)])
+chosen_states_coupling_labels = np.array([(1,6,0),(2,7,0)])
 # chosen_states_coupling_labels = np.array([(0,-6,0),(1,-6,0),(0,-8,0),(1,-8,0)])
 # chosen_states_coupling_labels = np.array([(0,-6,0),(1,-6,0),(0,-8,0),(1,-4,5)])
 chosen_coupling_labels = [
     (chosen_states_coupling_labels[0],chosen_states_coupling_labels[1]),
-    (chosen_states_coupling_labels[1],chosen_states_coupling_labels[2]),
-    (chosen_states_coupling_labels[3],chosen_states_coupling_labels[2]),
-    (chosen_states_coupling_labels[0],chosen_states_coupling_labels[3]),
+    # (chosen_states_coupling_labels[1],chosen_states_coupling_labels[2]),
+    # (chosen_states_coupling_labels[3],chosen_states_coupling_labels[2]),
+    # (chosen_states_coupling_labels[0],chosen_states_coupling_labels[3]),
 ]
 
 # With what desired rabi period
@@ -278,7 +281,7 @@ global_pulse_time = 979.891 * 1e-6 #s
 chosen_pulse_time = [global_pulse_time]*2
 
 # At what magnetic field
-chosen_bi = field_to_bi(890)
+chosen_bi = field_to_bi(199)
 
 # Only simulate other states that have strong off resonant coupling
 cutoff = 0.9999999 # =0 for only these =1 for all states

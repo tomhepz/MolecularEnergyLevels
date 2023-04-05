@@ -362,6 +362,7 @@ std = np.std(actual-predicted)
 print(std)
 
 # %%
+fig.savefig("../images/heuristic-accuracy.pdf")
 
 # %%
 
