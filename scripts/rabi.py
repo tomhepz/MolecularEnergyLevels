@@ -196,7 +196,7 @@ ax_r.set_ylabel(r'$\pi_2$')
 """
 
 # %%
-fig, ax = plt.subplots(1,figsize=(3.0,2.5))
+fig, ax = plt.subplots(1,figsize=(3.0,2.1),constrained_layout=True)
 
 t = np.linspace(0,4*np.pi,200)
 
@@ -286,6 +286,20 @@ for i,(k,g,p) in enumerate(example_points):
 def twice_average_fidelity(k,g):
     return ((1 + g**2)**2 + 8*k**2*(-1 + 2*g**2) + 16*k**4)/((1 + g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4)
 
+def Power(base,exp):
+    return base**exp
+
+def Sqrt(x):
+    return x**(0.5)
+
+def half_of_res(k,g,p):
+    return ((g*(Power(g,3)*(5 - 7*p) + g*(4 + 4*Power(k,2)*(4 - 7*p) - 5*p) + 
+       Power(g,5)*(1 - 2*p) + 12*Power(g,2)*k*Sqrt((1 - p)*p) + 
+       2*Power(g,4)*k*Sqrt((1 - p)*p) + 
+       8*k*(-1 + 4*Power(k,2))*Sqrt(-((-1 + p)*p))))/
+   (2.*(Power(1 + Power(g,2),3) + 
+       (-8 + 20*Power(g,2) + Power(g,4))*Power(k,2) + 16*Power(k,4))))
+
 def minus_fidelity(k,g):
     return 1-((g**2 * ((1+g**2)**2 + 12*k**2))/((1+g**2)**3 + (-8 + 20*g**2 + g**4)*k**2 + 16*k**4))
 
@@ -303,8 +317,8 @@ def maximum_fidelity(k,g):
     
     return numerator/denominator
 
-k_exp_range = (-1,12)
-g_exp_range = (-1,12)
+k_exp_range = (-5,5)
+g_exp_range = (-5,5)
 
 ks = np.logspace(*k_exp_range,1000)
 gs = np.logspace(*g_exp_range,1000)
@@ -322,10 +336,58 @@ k2 = ks**2
 expansion_fidelities = 1 - (4*g2+g2**2)/(16*k2) #- (g2)/(4*k2) - (g2**2)/(16*k2)# - (3*g2)/(16*k2**2) + (5*g2**2)/(32*k2**2)
 # expansion_fidelities = 1 - (g2/(k2))
 
+half_of_res_plot = half_of_res(ks,gs,0.50)
+
 difference = (np.log10(1-twice_average_fidelities+1e-9)-np.log10(1-expansion_fidelities+1e-9))#/np.log10(1-twice_average_fidelities+1e-9)
 
 
 
+
+# %%
+fig, ax = plt.subplots(1,1,figsize=(4,4),constrained_layout=True)
+
+Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
+
+# noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+noted_levels=[0.0001,0.001,0.01,0.1]
+
+title = "t"
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
+ax.set_xlabel('$\kappa$')
+ax.set_ylabel('$\Gamma$')
+
+k=10
+normalised_fidelies = -np.log10(np.abs(half_of_res_plot)+1e-15)/15
+
+cf = ax.contourf(ks,gs,normalised_fidelies,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
+CS1 = ax.contour(ks,gs,half_of_res_plot,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
+
+fmt = {}
+strs = [f"{n*100:.3f}\%" for n in noted_levels]
+for l, s in zip(CS1.levels, strs):
+    fmt[l] = s
+
+# labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
+ax.clabel(CS1, CS1.levels, fmt=fmt,fontsize='small')
+ax.set_title(title)
+
+ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+
+ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2**(2/3)*(10**k_exp_range[0])**(2/3),2**(2/3)*(10**k_exp_range[1])**(2/3)],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    
+
+fig.savefig('../images/3-level-phase.pdf')
+
+# %%
+print(np.unravel_index(normalised_fidelies.argmin(), normalised_fidelies.shape))
+print(gs[514, 502])
+print(ks[514, 502])
 
 # %% tags=[]
 fig, (axl,axm,axr) = plt.subplots(1,3,figsize=(6,3),sharey=True,sharex=True,constrained_layout=True)
@@ -357,7 +419,7 @@ for ax, fidelities,title in [(axl,twice_average_fidelities,r"$\langle P^{max}_{|
         fmt[l] = s
 
     labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
-    ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions,fontsize='small')
+    # ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions,fontsize='small')
     ax.set_title(title)
     
     ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
@@ -572,7 +634,7 @@ fig, ax = plt.subplots()
 
 INITIAL_STATE = 0
 FIRST = 2.43e7
-DETUNING = 10000
+DETUNING = 1
 angular = [0, FIRST, FIRST+DETUNING]
 N_STATES = len(angular)
 
@@ -587,8 +649,8 @@ coupling = global_coupling*np.array([
 driving = angular[1]-angular[0]
 
 # Construct
-T_MAX = 5*np.pi / global_coupling
-T_STEPS = 1705829 
+T_MAX = 0.1*np.pi / global_coupling
+T_STEPS = 1705829
 times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
 print("time_step:", DT, "Driving Period: ",2*np.pi/driving, "ratio (hope<1):", DT*driving/(2*np.pi))
 
@@ -610,7 +672,8 @@ H = np.array([H_BAR/2 * np.multiply(coupling, T) for T in Ts])
 finals = []
 
 state = np.zeros(N_STATES) # initial state
-state[INITIAL_STATE] = 1
+state[INITIAL_STATE] = (0.501)**(1/2)
+state[2] = (0.499)**(1/2)
 
 
 for i in range(T_STEPS):

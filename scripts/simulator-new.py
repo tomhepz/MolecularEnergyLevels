@@ -236,20 +236,20 @@ def label_pair_to_edge_index(label1,label2):
 
 # %%
 # Driven couplings between states
-chosen_states_coupling_labels = np.array([(1,6,8),(0,4,3),(1,4,9)])
+chosen_states_coupling_labels = np.array([(0,4,0),(1,2,0),(0,2,1)])
 chosen_coupling_labels = [
-    # (chosen_states_coupling_labels[0],chosen_states_coupling_labels[1]),
-    (chosen_states_coupling_labels[1],chosen_states_coupling_labels[2]),
+    (chosen_states_coupling_labels[0],chosen_states_coupling_labels[1]),
+    # (chosen_states_coupling_labels[1],chosen_states_coupling_labels[2]),
     # (chosen_states_coupling_labels[3],chosen_states_coupling_labels[2]),
     # (chosen_states_coupling_labels[0],chosen_states_coupling_labels[3]),
 ]
 
 # With what desired rabi period
-global_pulse_time = 297.829 * 1e-6 #s
+global_pulse_time = 5000 * 2 * 1e-6 #s
 chosen_pulse_time = [global_pulse_time]*len(chosen_coupling_labels)
 
 # At what magnetic field
-chosen_bi = field_to_bi(458)
+chosen_bi = field_to_bi(45.5)
 
 # Only simulate other states that have strong off resonant coupling
 # cutoff = 0.9999999 # =0 for only these =1 for all states
@@ -273,53 +273,12 @@ for l in chosen_states_coupling_labels:
     # example_points.append()
 
 chosen_states_labels = LABELS_D[needed_states]
+# chosen_states_labels = LABELS_D[np.array([label_d_to_node_index(*label) for label in chosen_states_coupling_labels])]
 
 # %%
 chosen_states_coupling_subindices = [np.where((chosen_states_labels[:, 0] == N) & (chosen_states_labels[:, 1] == MF) & (chosen_states_labels[:, 2] == k))[0][0] for N,MF,k in chosen_states_coupling_labels]
 chosen_states_indices = np.array([label_d_to_node_index(*label) for label in chosen_states_labels])
 chosen_number_of_states = len(chosen_states_indices)
-
-# %%
-# Compute further constants and indices from molecular parameters
-k_exp_range = (-7,7)
-g_exp_range = (-7,7)
-ks = np.logspace(*k_exp_range,1000)
-gs = np.logspace(*g_exp_range,1000)
-ks, gs = np.meshgrid(ks,gs)
-twice_average_fidelities = twice_average_fidelity(ks,gs)
-simple_fidelities = simple_fidelity(ks,gs)
-
-# %%
-fig, (axl,axr) = plt.subplots(1,2,figsize=(6,3),constrained_layout=True,sharex=True,sharey=True)
-
-Norm  = matplotlib.colors.Normalize(vmin=0, vmax=1)
-
-noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
-
-for ax, fidelities in [(axl,twice_average_fidelities),(axr,simple_fidelities)]:
-    ax.set_ylabel('$\Gamma$')
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
-    ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
-    # ax.set_xlim(1,1000)
-    # ax.set_ylim(0.0001,100)
-    ax.set_xlabel('$\kappa$')
-    k=10
-    normalised_fidelies = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
-    cf = ax.contourf(ks,gs,normalised_fidelies,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
-    CS1 = ax.contour(ks,gs,fidelities,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
-
-    fmt = {}
-    strs = [f"{n*100:.3f}%" for n in noted_levels]
-    for l, s in zip(CS1.levels, strs):
-        fmt[l] = s
-
-    labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
-    ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions,fontsize='small')
-
-#     for k,g,_ in example_points:
-#         ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
 
 # %%
 # Get Angular Frequency Matrix Diagonal for each B
@@ -365,8 +324,9 @@ V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) f
 
 # Construct state vector
 state_vector = np.zeros((T_STEPS,chosen_number_of_states), dtype=np.cdouble)
-state_vector[0,chosen_states_coupling_subindices[0]] = 1/np.sqrt(2)
-state_vector[0,chosen_states_coupling_subindices[2]] = 1/np.sqrt(2)
+# state_vector[0,chosen_states_coupling_subindices[0]] = np.sqrt(1.0)
+# state_vector[0,chosen_states_coupling_subindices[1]] = np.sqrt(1)
+state_vector[0,chosen_states_coupling_subindices[2]] = np.sqrt(1)
 
 for t_num in trange(T_STEPS-1):
     pres = E_i*np.cos(driving*times[t_num])
@@ -376,28 +336,47 @@ for t_num in trange(T_STEPS-1):
     DU = T_OP_DIAG[:,None] * V_OP[:,:] * T_OP_DIAG[None,:]
     state_vector[t_num+1] = DU @ state_vector[t_num]
 
-resolution=20
+resolution=10
 probabilities = np.abs(state_vector[::resolution,:])**2
 
 # %%
 # Plot results
-fig,ax = plt.subplots(figsize=(5,3))
-ax.set_xlabel('t(us)')
-ax.set_ylim(0,1)
-ax.set_xlim(0,TIME*1e6)
+fig,ax = plt.subplots(figsize=(6.2,3.0))
+ax.set_xlabel('$t\,(\mu s)$')
+ax.set_ylabel('$P_i$')
+ax.set_ylim(0,1.0)
+# ax.set_xlim(0,TIME*1e6)
+ax.set_xlim(0,4000)
 states_string = ','.join([f'${label_d_to_latex_string(label)}$' for label in chosen_states_coupling_labels])
-ax.set_title('{},\n {} @ {}G,\n RabiPeriod {}$\mu s$, SimSteps {},\n unpolarised, {} states simulated'
-             .format(MOLECULE_STRING,
-                     states_string,
-                     f"{B[chosen_bi]/GAUSS:.1f}",
-                     round(global_pulse_time*1e6),
-                     T_STEPS,
-                     chosen_number_of_states))
+# ax.set_title('{},\n {} @ {}G,\n RabiPeriod {}$\mu s$, SimSteps {},\n unpolarised, {} states simulated'
+#              .format(MOLECULE_STRING,
+#                      states_string,
+#                      f"{B[chosen_bi]/GAUSS:.1f}",
+#                      round(global_pulse_time*1e6),
+#                      T_STEPS,
+#                      chosen_number_of_states))
 
-c = ['red','green','blue','purple','grey','grey']
+c = ['blue','green','purple','red','grey','grey']
 ax.plot(times[::resolution]*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
     ax.plot(times[::resolution]*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+    
+axinset = ax.inset_axes([0.23, 0.6, 0.3, 0.3])
+axinset.plot(times[::resolution]*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+for i,state_subindex in enumerate(chosen_states_coupling_subindices):
+    axinset.plot(times[::resolution]*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+axinset.set_xlim(0,2000)
+axinset.set_ylim(1-0.002,1)
+axinset.axhline(1-0.001,color='black',linestyle='dashed',lw=1)
+axinset.axhline(0.001)
+
+axinset2 = ax.inset_axes([0.23, 0.1, 0.3, 0.3])
+axinset2.plot(times[::resolution]*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+for i,state_subindex in enumerate(chosen_states_coupling_subindices):
+    axinset2.plot(times[::resolution]*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+axinset2.set_xlim(0,2000)
+axinset2.set_ylim(0,0.002)
+axinset2.axhline(0.001,color='black',linestyle='dashed',lw=1)
     
 print(f"{np.max(probabilities[:,chosen_states_coupling_subindices[1]]):.10f}")
 fig.savefig(f'../images/{MOLECULE_STRING}-2-state-qubit-sim-a.pdf')
@@ -406,6 +385,9 @@ fig.savefig(f'../images/{MOLECULE_STRING}-2-state-qubit-sim-a.pdf')
 # 0.9954616013
 # Hyp: 0.9909437997
 
+
+
+# %%
 
 # %%
 

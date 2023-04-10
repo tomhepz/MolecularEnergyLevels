@@ -220,6 +220,9 @@ def find_nearest(array,value):
 def field_to_bi(gauss):
     return find_nearest(B,gauss*GAUSS)
 
+def round_to_n(x, n): 
+    return round(x, -int(np.floor(np.log10(max(x,1e-20)))) + (n - 1))
+
 
 # %%
 @jit(nopython=True)
@@ -383,7 +386,7 @@ print(latex_string)
 # %%
 @njit(nogil=True)
 def maximise_fid_dev(possibilities, progress_proxy, max_bi=B_STEPS, loop=False, required_crossing=None,
-                     travel_frac=0.5, pol_eff=0.5, dev_exp=(1/3), coincidental_outflow=True
+                     travel_frac=0.2, pol_eff=0.7, dev_exp=(1/3), coincidental_outflow=True
                     ):
     n_comb = len(possibilities)
     n_states = len(possibilities[0])
@@ -488,7 +491,7 @@ def maximise_fid_dev(possibilities, progress_proxy, max_bi=B_STEPS, loop=False, 
         this_delta_b_req_pol = scipy.constants.h/(this_deviation*this_pol_t_gate)
         
         # Rank this state combination
-        rated_b_max = (np.minimum(0.158*np.ones(B_STEPS),scipy.constants.h/(this_deviation*(pol_eff*this_pol_t_gate + (1-pol_eff)*this_unpol_t_gate))))**(dev_exp)
+        rated_b_max = (np.minimum(np.ones(B_STEPS),scipy.constants.h/(this_deviation*(pol_eff*this_pol_t_gate + (1-pol_eff)*this_unpol_t_gate))))**(dev_exp)
         
         rated_time = (  (travel_frac)           * (pol_eff*this_pol_distance_time + (1-pol_eff)*this_unpol_distance_time)
                       +(1-travel_frac)*n_states * (pol_eff*this_pol_t_gate        + (1-pol_eff)*this_unpol_t_gate)
@@ -549,8 +552,14 @@ def maximise_fid_dev(possibilities, progress_proxy, max_bi=B_STEPS, loop=False, 
             peak_rating_index)
 
 # %%
+
+
+
+# %%
 def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_distance_time, pol_distance_time, unpol_distance_start, pol_distance_start, unpol_time, pol_time, rating, peak_rating, peak_rating_index,
-                             plot=True, table_len=8, latex_table=False, x_plots=4, y_plots=1, save_name=None):
+                             plot=True, table_len=8, latex_table=False, x_plots=4, y_plots=1, figsize=(10.5,3), b_max=B_MAX/GAUSS,
+                             log_min=0,log_max=6,
+                             save_name=None):
 
     order = (-peak_rating).argsort()
     
@@ -558,7 +567,7 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
     
     # Display Results
     if plot:
-        fig, axs = plt.subplots(y_plots,x_plots,figsize=(10.5,3),dpi=100,sharex=True,sharey=True,constrained_layout=True)
+        fig, axs = plt.subplots(y_plots,x_plots,figsize=figsize,dpi=100,sharex=True,sharey=True,constrained_layout=True)
         if n_plots > 1:
             axs = axs.flatten()
         else:
@@ -567,6 +576,8 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
     textheaders = ['states', 'B(G)', 'unpolDB(mG)', 'polDB(mG)', 'unpoltg(us)', 'poltg(us)', 'unpoltd(us)', 'poltd(us)', 'rating', 'path']
     latexheaders = [r'{States}', r'{$B(G)$}', r'{$\Delta B^{\text{unpol}}(mG)$}', r'{$\Delta B^{\text{pol}}(mG)$}', r'{$t^{\text{unpol}}_{g}(\mu s)$}', r'{$t^{\text{pol}}_{g}(\mu s)$}', r'{$t^{\text{unpol}}_{d}(\mu s)$}', r'{$t^{\text{pol}}_{d}(\mu s)$}', r'{Rating}', r'{Path}']
     data = []
+    n_show=3
+    
     for i in range(table_len):
         besti = order[i]
         combi = peak_rating_index[besti]
@@ -598,22 +609,28 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
         
         if plot and i<n_plots:
             ax = axs[i]
-            ax.set_xlim(0,B_MAX/GAUSS)
-            ax.set_ylim(0,6)
+            ax.set_xlim(0,b_max)
+            ax.set_ylim(log_min,log_max)
+            ax.set_yticks(range(log_min,log_max+1,1))
             
-            ax.plot(B/GAUSS, np.log10(1e-12+this_unpol_distance_time*1e6), linestyle='dashed', c='red', alpha=0.4)
-            ax.plot(B/GAUSS, np.log10(1e-12+this_pol_distance_time*1e6), linestyle='dashed', c='green', alpha=0.4)
+            ax.plot(B/GAUSS, np.log10(1e-12+this_unpol_distance_time*1e6*(10**(n_show/2))), linestyle='dashed', c='red', alpha=0.4)
+            ax.plot(B/GAUSS, np.log10(1e-12+this_pol_distance_time*1e6*(10**(n_show/2))), linestyle='dashed', c='green', alpha=0.4)
 
-            ax.plot(B/GAUSS, np.log10(1e-12+this_unpol_time*1e6), linestyle='solid', c='red', alpha=0.6)
-            ax.plot(B/GAUSS, np.log10(1e-12+this_pol_time*1e6), linestyle='solid', c='green', alpha=0.6)
+            ax.plot(B/GAUSS, np.log10(1e-12+this_unpol_time*1e6*(10**(n_show/2))), linestyle='solid', c='red', alpha=0.6)
+            ax.plot(B/GAUSS, np.log10(1e-12+this_pol_time*1e6*(10**(n_show/2))), linestyle='solid', c='green', alpha=0.6)
             
             at_field = B[peak_rating_bi]/GAUSS
-            lower_inset_bi = field_to_bi(at_field-20)
-            upper_inset_bi = field_to_bi(at_field+20)
+            at_moment = np.average(MAGNETIC_MOMENTS[state_numbers,peak_rating_bi])/muN
             
+            field_deviation = 20 #mG
+            moment_deviation = 0.5 #muN
+              
             axinset = ax.inset_axes([0.65, 0.65, 0.3, 0.3])
-            axinset.plot(B[lower_inset_bi:upper_inset_bi]/GAUSS,MAGNETIC_MOMENTS[state_numbers,lower_inset_bi:upper_inset_bi].T/muN)
+            axinset.plot(B/GAUSS,MAGNETIC_MOMENTS[state_numbers,:].T/muN)
             axinset.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
+            
+            axinset.set_xlim(at_field-field_deviation,at_field+field_deviation)
+            axinset.set_ylim(at_moment-moment_deviation,at_moment+moment_deviation)
             
             ax.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
         
@@ -631,18 +648,16 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
             path_string += f"<(+{len(path)-2})<"
             path_string += "<".join([label_d_to_string(label) for label in path[len(path)-1:]])
         
-        n_show=3
         states_string = ",".join([label_d_to_string(label) for label in state_labels])
-        print(peak_rating)
         string_list = [states_string,
                        f"{peak_magnetic_field/GAUSS:6.1f}",
-                       f"{peak_unpol_db_req*1e3*(10**(-3*n_show/2))/GAUSS:.6f}",
-                       f"{peak_pol_db_req*1e3*(10**(-3*n_show/2))/GAUSS:.6f}",
-                       peak_unpol_time*1e6*(10**(n_show/2)),
-                       f"{peak_pol_time*1e6*(10**(n_show/2)):.3f}",
-                       f"{peak_unpol_distance_time*1e6*(10**(n_show/2)):.3f}",
-                       f"{peak_pol_distance_time*1e6*(10**(n_show/2)):.3f}",
-                       f"{peak_rating:.2f}",
+                       f"{round_to_n(peak_unpol_db_req*1e3*(10**(-3*n_show/2))/GAUSS,2):.6f}",
+                       f"{round_to_n(peak_pol_db_req*1e3*(10**(-3*n_show/2))/GAUSS,2):.6f}",
+                       f"{round_to_n(peak_unpol_time*1e6*(10**(n_show/2)),2):.3f}",
+                       f"{round_to_n(peak_pol_time*1e6*(10**(n_show/2)),2):.3f}",
+                       f"{round_to_n(peak_unpol_distance_time*1e6*(10**(n_show/2)),2):.3f}",
+                       f"{round_to_n(peak_pol_distance_time*1e6*(10**(n_show/2)),2):.3f}",
+                       f"{round_to_n(peak_rating,2):.2f}",
                        path_string
                        ]
         data.append(string_list)
@@ -653,7 +668,7 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
             text_file.write(tabulate(data, headers=latexheaders, tablefmt="latex_raw"))
     if plot:
         fig.supxlabel('Magnetic Field $B_z$ (G)')
-        fig.supylabel('$log_{10} (t)$')
+        fig.supylabel('$log_{10} (t \, / \, \mu s)$')
         if save_name is not None:
             fig.savefig(f'../images/many-molecules/{save_name}.pdf')
 
@@ -698,7 +713,7 @@ with ProgressBar(total=len(possibilities_d[:])) as progress:
 
 
 # %%
-show_optimisation_results(possibilities_d,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-qubit",latex_table=True)
+show_optimisation_results(possibilities_d,*r,x_plots=3,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-qubit",latex_table=True)
 
 # %% [markdown]
 """
@@ -735,11 +750,14 @@ possibilities_d = np.array(possibilities)
 # %%
 # maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
 with ProgressBar(total=len(possibilities_d)) as progress:
-    r = maximise_fid_dev(possibilities_d[:], progress, required_crossing=(0,2))
+    r = maximise_fid_dev(possibilities_d[:], progress, required_crossing=(0,2),
+                         travel_frac=0.2, pol_eff=0.7, dev_exp=(1/3))
 
 
 # %%
-show_optimisation_results(possibilities_d,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-qubit-zero",latex_table=True)
+show_optimisation_results(possibilities_d,*r,x_plots=3,y_plots=1,table_len=50,figsize=(6.5,3),
+                          b_max=400,save_name=f"{MOLECULE_STRING}-qubit-zero",latex_table=True,
+                         log_min=2,log_max=6)
 
 # %% [markdown]
 """
@@ -854,7 +872,7 @@ with ProgressBar(total=len(states)) as progress:
     r = maximise_fid_dev(states[:], progress, loop=True)
 
 # %%
-show_optimisation_results(states,*r,x_plots=4,y_plots=1,table_len=10,save_name=f"{MOLECULE_STRING}-4-state",latex_table=True)
+show_optimisation_results(states,*r,x_plots=3,y_plots=1,table_len=3,save_name=f"{MOLECULE_STRING}-4-state",latex_table=True,figsize=(6.5,3))
 
 # %% [markdown] tags=[]
 """
