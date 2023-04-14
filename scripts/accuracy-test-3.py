@@ -331,14 +331,14 @@ def peakProbabilitiesSympathetic(angular, coupling, pulse_time=100e-6, initial=0
 
 
 # %%
-N_MONTE = 5
-N_FID_MAX = 5
-N_ATTEMPTS = N_MONTE*(N_FID_MAX+1)
+N_MONTE = 10
+N_FID_MAX = 4
+N_ATTEMPTS = N_MONTE*N_FID_MAX
 
 N_EXTRA_UP = 2
-N_EXTRA_DOWN = 4
-N_GAP = 1e12
-NOISE_AMP = 1e4
+N_EXTRA_DOWN = 3
+N_GAP = 2 * np.pi * 980e5
+NOISE_AMP = 2 * np.pi * 0.5e6
 N_STATES = 2 + N_EXTRA_UP+N_EXTRA_DOWN
 # pt = 1e-1
 
@@ -357,18 +357,12 @@ for N_SIM in trange(N_MONTE):
     angular = angular_base + angular_noise
     
     coupling_noise = np.ones((N_EXTRA_DOWN+1,N_EXTRA_UP+1))+(np.random.random_sample(size=(N_EXTRA_DOWN+1,N_EXTRA_UP+1))-1)
-    coupling_noise[0,0]=1
-    coupling_noise[1,0]=0.955
+    coupling_noise[0,0]=(0.8*np.random.random_sample(size=(1))+0.2)
+    coupling_noise[1,0]=(0.8*np.random.random_sample(size=(1))+0.2)
     coupling[:N_EXTRA_DOWN+1,N_EXTRA_DOWN+1:] = coupling_noise
     coupling[N_EXTRA_DOWN+1:,:N_EXTRA_DOWN+1] = coupling_noise.T
     
-    # print(angular)
-    # print('###')
-    # print(coupling)
-    
-    # rabi = 2*np.pi/pt
-    
-    # Angular separations between 
+    # Angular separations
     detunings_up = np.abs(angular[N_EXTRA_DOWN+1] - angular[N_EXTRA_DOWN+2:])
     detunings_down_first = np.abs(angular[0] - angular[1:N_EXTRA_DOWN+1])
     detunings_down_second = np.abs(angular[1] - np.concatenate((angular[0:1], angular[2:N_EXTRA_DOWN+1])))
@@ -376,22 +370,19 @@ for N_SIM in trange(N_MONTE):
     detuning_sympathetic_first = np.abs((angular[N_EXTRA_DOWN+1:]-angular[1])-(angular[N_EXTRA_DOWN+1]-angular[0]))
     detuning_sympathetic_second = np.abs((angular[N_EXTRA_DOWN+1:]-angular[0])-(angular[N_EXTRA_DOWN+1]-angular[1]))
     
-    # ks_up = detunings_up / rabi
-    # ks_down = detunings_down / rabi
-    
-    gs_unpolarised_up_first = np.abs(coupling[0, N_EXTRA_DOWN+2:])
-    gs_unpolarised_up_second = np.abs(coupling[1, N_EXTRA_DOWN+2:])
+    # Coupling Ratios
+    gs_unpolarised_up_first = np.abs(coupling[0, N_EXTRA_DOWN+2:]/coupling[0,N_EXTRA_DOWN+1])
+    gs_unpolarised_down_first = np.abs(coupling[N_EXTRA_DOWN+1, 1:N_EXTRA_DOWN+1]/coupling[0,N_EXTRA_DOWN+1])
+
+    gs_unpolarised_up_second = np.abs(coupling[1, N_EXTRA_DOWN+2:]/coupling[1,N_EXTRA_DOWN+1])
+    gs_unpolarised_down_second = np.abs(np.concatenate((coupling[N_EXTRA_DOWN+1, 0:1],coupling[N_EXTRA_DOWN+1, 2:N_EXTRA_DOWN+1]))/coupling[1,N_EXTRA_DOWN+1])
     
     gs_unpolarised_sympathetic_first = np.abs(coupling[1,N_EXTRA_DOWN+1:]/coupling[0,N_EXTRA_DOWN+1])
     gs_unpolarised_sympathetic_second = np.abs(coupling[0,N_EXTRA_DOWN+1:]/coupling[1,N_EXTRA_DOWN+1])
-
-    gs_unpolarised_down = np.abs(coupling[N_EXTRA_DOWN+1, 1:N_EXTRA_DOWN+1])
-    
-    #char_t = (np.pi/4) * (np.sum(np.sqrt((4*gs_unpolarised_up**2 + gs_unpolarised_up**4)/(detunings_up**2)))+np.sum(np.sqrt((4*gs_unpolarised_down**2 + gs_unpolarised_down**4)/(detunings_down**2))))
     
     char_t_first = (np.pi/2) * np.sqrt(
          np.sum((4*gs_unpolarised_up_first**2 + gs_unpolarised_up_first**4)/(detunings_up**2))
-         +np.sum((4*gs_unpolarised_down**2 + gs_unpolarised_down**4)/(detunings_down_first**2))
+         +np.sum((4*gs_unpolarised_down_first**2 + gs_unpolarised_down_first**4)/(detunings_down_first**2))
         )
     
     char_t_first_symp = 2 * np.pi * np.sqrt(
@@ -400,7 +391,7 @@ for N_SIM in trange(N_MONTE):
         
     char_t_second = (np.pi/2) * np.sqrt(
          np.sum((4*gs_unpolarised_up_second**2 + gs_unpolarised_up_second**4)/(detunings_up**2))
-         +np.sum((4*gs_unpolarised_down**2 + gs_unpolarised_down**4)/(detunings_down_second**2))
+         +np.sum((4*gs_unpolarised_down_second**2 + gs_unpolarised_down_second**4)/(detunings_down_second**2))
         )
     
     char_t_second_symp = 2 * np.pi * np.sqrt(
@@ -413,19 +404,19 @@ for N_SIM in trange(N_MONTE):
     # fidelities_unpolarised_up = twice_average_fidelity(ks_up,gs_unpolarised_up)
     # fidelities_unpolarised_down = twice_average_fidelity(ks_down,gs_unpolarised_down)
     
-    for n in range(0,N_FID_MAX+1):
-        n_dist = n+np.random.rand()
+    for n in range(1,N_FID_MAX+1):
+        n_dist = n+np.random.rand()-0.5
         
         predicted_fidelity = 1-10**(-n_dist)
     
         # times,real_fidelity_time = UnitaryTimeEvolution(angular,coupling,pulse_time=pt,initial=0,intended=N_EXTRA_DOWN+1,time_steps=43237)
         # real_fidelity = np.max(real_fidelity_time[:,N_EXTRA_DOWN+1])
         
-        times,real_fidelity_time_first  = peakProbabilities(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=0,intended=N_EXTRA_DOWN+1,time_steps=189871)
-        times,real_fidelity_time_second = peakProbabilities(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=1,intended=N_EXTRA_DOWN+1,time_steps=189871)
+        times,real_fidelity_time_first  = peakProbabilities(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=0,intended=N_EXTRA_DOWN+1,time_steps=101161)
+        times,real_fidelity_time_second = peakProbabilities(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=1,intended=N_EXTRA_DOWN+1,time_steps=101161)
         
-        times,real_fidelity_time_sympathetic_first  = peakProbabilitiesSympathetic(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=0,intended=N_EXTRA_DOWN+1,sympathetic=1,time_steps=189871)
-        times,real_fidelity_time_sympathetic_second = peakProbabilitiesSympathetic(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=1,intended=N_EXTRA_DOWN+1,sympathetic=0,time_steps=189871)
+        times,real_fidelity_time_sympathetic_first  = peakProbabilitiesSympathetic(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=0,intended=N_EXTRA_DOWN+1,sympathetic=1,time_steps=101161)
+        times,real_fidelity_time_sympathetic_second = peakProbabilitiesSympathetic(angular,coupling,pulse_time=char_t*10**(n_dist/2),initial=1,intended=N_EXTRA_DOWN+1,sympathetic=0,time_steps=101161)
         
         real_fidelity_first = np.max(np.abs(real_fidelity_time_first[:,N_EXTRA_DOWN+1])**2)
         real_fidelity_second = np.max(np.abs(real_fidelity_time_second[:,N_EXTRA_DOWN+1])**2)
@@ -434,7 +425,7 @@ for N_SIM in trange(N_MONTE):
         real_fidelity_sympathetic_second = np.min(np.abs(real_fidelity_time_sympathetic_second[:,0])**2)
         
         real_fidelity = np.minimum.reduce([real_fidelity_first,real_fidelity_second,real_fidelity_sympathetic_first,real_fidelity_sympathetic_second])
-        # real_fidelity = real_fidelity_sympathetic_first # np.minimum.reduce([real_fidelity_first,real_fidelity_second])
+        # real_fidelity = real_fidelity_second # np.minimum.reduce([real_fidelity_first,real_fidelity_second])
     
         predicted[i] = predicted_fidelity
         actual[i] = real_fidelity
@@ -451,24 +442,22 @@ for N_SIM in trange(N_MONTE):
     # ax2.plot(times,real_fidelity_time,c='k',lw=0.5)
 
 # %%
-fig,ax = plt.subplots()
-ax.set_xlim(0,8)    
-ax.set_ylim(-1,1)
-ax.axhline(0,lw=1.5,linestyle='dashed',c='black')
+fig,ax = plt.subplots(figsize=(6.2,2.5),constrained_layout=True)
+ax.set_xlim(0,N_FID_MAX+1)    
+ax.set_ylim(-0.5,0.5)
+ax.axhline(0,lw=1.0,linestyle='dashed',c='black')
 
-cl=['red','orange','purple','green','blue','grey']
+ax.set_yticks([-0.5,-0.25,0,0.25,0.5])
 
 i=0
-ci=0
-for N_SIM in trange(N_MONTE):
-    ax.scatter(-np.log10(1-predicted[i:i+N_FID_MAX+1]),-np.log10(1-actual[i:i+N_FID_MAX+1])+np.log10(1-predicted[i:i+N_FID_MAX+1]),color=cl[ci])
+for N_SIM in trange(1,N_MONTE):
+    ax.scatter(-np.log10(1-predicted[i:i+N_FID_MAX+1]),-np.log10(1-actual[i:i+N_FID_MAX+1])+np.log10(1-predicted[i:i+N_FID_MAX+1]),marker='o',c='red')
     i+=N_FID_MAX+1
-    ci+=1
     
-ax.set_xlabel('$N_{predicted}$')
-ax.set_ylabel('$N_{actual}-N_{predicted}$')
+ax.set_xlabel('$\eta_{predicted}$')
+ax.set_ylabel('$\eta_{actual}-\eta_{predicted}$')
 
-std = np.std(actual-predicted)
+std = np.std(-np.log10(1-actual[N_FID_MAX+1:])+np.log10(1-predicted[N_FID_MAX+1:]))
 print(std)
 
 # %%

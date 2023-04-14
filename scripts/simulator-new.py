@@ -234,119 +234,120 @@ def label_pair_to_edge_index(label1,label2):
 # Simulator
 """
 
+
+# %%
+def simulate(chosen_states_coupling_labels, chosen_coupling_labels, chosen_pulse_time, chosen_bi, initial_populations, T_STEPS=41443, resolution=1):
+
+    # Simulation time length (how many Rabi periods to show)
+    TIME = chosen_pulse_time[0]*2
+
+    chosen_state_labels = []
+    # example_points = []
+    POLARISED = False
+
+    needed_states = np.full(N_STATES, False)
+    for l in chosen_states_coupling_labels:
+        ni = label_d_to_edge_indices(*l)
+        nl = TRANSITION_INDICES[ni[0]:ni[6]][:,1]
+        needed_states[nl] = True 
+        # example_points.append()
+
+    # chosen_states_labels = LABELS_D
+    chosen_states_labels = LABELS_D[needed_states]
+    # chosen_states_labels = LABELS_D[np.array([label_d_to_node_index(*label) for label in np.concatenate((chosen_states_coupling_labels,np.array([[0,10,0]])))])]
+    # print(chosen_states_labels)
+
+    chosen_states_coupling_subindices = [np.where((chosen_states_labels[:, 0] == N) & (chosen_states_labels[:, 1] == MF) & (chosen_states_labels[:, 2] == k))[0][0] for N,MF,k in chosen_states_coupling_labels]
+    chosen_states_indices = np.array([label_d_to_node_index(*label) for label in chosen_states_labels])
+    chosen_number_of_states = len(chosen_states_indices)
+    
+    
+    # Get Angular Frequency Matrix Diagonal for each B
+    all_angular = ENERGIES[:, chosen_bi].real / H_BAR # [state]
+    angular = all_angular[chosen_states_indices]
+
+    # Form coupling matrix
+    couplings = np.zeros((chosen_number_of_states,chosen_number_of_states))
+    for i in range(chosen_number_of_states):
+        ai = chosen_states_indices[i]
+        for j in range(chosen_number_of_states):
+            bi = chosen_states_indices[j]
+            la = LABELS_D[ai]
+            lb = LABELS_D[bi]
+            if abs(la[0]-lb[0]) != 1 or abs(la[1]-lb[1]) > 2:
+                continue
+            edge_index = label_pair_to_edge_index(la,lb)
+            couplings[i,j] = COUPLINGS_SPARSE[edge_index,chosen_bi]
+
+    # Get driving frequencies & polarisations
+    driving = []
+    E_i = []
+    for (l1,l2), pulse_time in zip(chosen_coupling_labels, chosen_pulse_time):
+        i1=label_d_to_node_index(*l1)
+        i2=label_d_to_node_index(*l2)
+        driving.append(np.abs(all_angular[i1]-all_angular[i2]))
+        E_i.append((2*np.pi*H_BAR) / (D_0 * COUPLINGS_SPARSE[label_pair_to_edge_index(l1,l2),chosen_bi] * pulse_time))
+    driving = np.array(driving)
+    E_i = np.array(E_i,dtype=np.double)
+
+    # Construct times
+    times, DT = np.linspace(0,TIME,num=T_STEPS,retstep=True)
+
+    # Construct kinetic time step operator (Matrix Diagonal)
+    T_OP_DIAG = np.exp(-(1j) * angular * DT/2 )
+
+    # Construct potential fixed part time step operator 
+    ORDER = 10
+    V_TI_M = (-(1j)*D_0*couplings*DT)/H_BAR
+    V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) for i in range(ORDER)])
+
+    # Construct state vector
+    state_vector = np.zeros((T_STEPS,chosen_number_of_states), dtype=np.cdouble)
+    for i,p in enumerate(initial_populations):
+        state_vector[0,chosen_states_coupling_subindices[i]] = np.sqrt(p)
+
+    for t_num in trange(T_STEPS-1):
+        pres = E_i*np.cos(driving*times[t_num])
+        V_TD_POWS = np.sum(pres)**(np.arange(ORDER))
+        V_OP = np.sum(V_TI_M_POWS*V_TD_POWS[:,None,None],axis=0)
+
+        DU = T_OP_DIAG[:,None] * V_OP[:,:] * T_OP_DIAG[None,:]
+        state_vector[t_num+1] = DU @ state_vector[t_num]
+    
+    return times[::resolution], np.abs(state_vector[::resolution,:])**2, chosen_states_coupling_subindices
+
 # %%
 # Driven couplings between states
-chosen_states_coupling_labels = np.array([(0,4,0),(1,2,0),(0,2,1)])
+chosen_states_coupling_labels = np.array([(0,8,1),(1,8,3),(2,8,3),(1,6,2)])
 chosen_coupling_labels = [
     (chosen_states_coupling_labels[0],chosen_states_coupling_labels[1]),
-    # (chosen_states_coupling_labels[1],chosen_states_coupling_labels[2]),
-    # (chosen_states_coupling_labels[3],chosen_states_coupling_labels[2]),
-    # (chosen_states_coupling_labels[0],chosen_states_coupling_labels[3]),
+    (chosen_states_coupling_labels[1],chosen_states_coupling_labels[2]),
+    (chosen_states_coupling_labels[3],chosen_states_coupling_labels[2]),
+    (chosen_states_coupling_labels[0],chosen_states_coupling_labels[3]),
 ]
 
 # With what desired rabi period
-global_pulse_time = 5000 * 2 * 1e-6 #s
+f_boost = 2
+
+global_pulse_time = 1100 * 2 * 1e-6 * 10**(f_boost/2) #s
 chosen_pulse_time = [global_pulse_time]*len(chosen_coupling_labels)
 
 # At what magnetic field
-chosen_bi = field_to_bi(45.5)
+chosen_bi = field_to_bi(710)
 
-# Only simulate other states that have strong off resonant coupling
-# cutoff = 0.9999999 # =0 for only these =1 for all states
-        
 # Simulation resolution
-T_STEPS =  [803989,314927,195931,65519,41443,21319,9391,50][4]*2
+T_STEPS =  [803989,314927,195931,65519,41443,21319,9391,50][2]*2
 
-# Simulation time length (how many Rabi periods to show)
-TIME = chosen_pulse_time[0]*2
-
-# %%
-chosen_state_labels = []
-# example_points = []
-POLARISED = False
-
-needed_states = np.full(N_STATES, False)
-for l in chosen_states_coupling_labels:
-    ni = label_d_to_edge_indices(*l)
-    nl = TRANSITION_INDICES[ni[0]:ni[6]][:,1]
-    needed_states[nl] = True 
-    # example_points.append()
-
-chosen_states_labels = LABELS_D[needed_states]
-# chosen_states_labels = LABELS_D[np.array([label_d_to_node_index(*label) for label in chosen_states_coupling_labels])]
-
-# %%
-chosen_states_coupling_subindices = [np.where((chosen_states_labels[:, 0] == N) & (chosen_states_labels[:, 1] == MF) & (chosen_states_labels[:, 2] == k))[0][0] for N,MF,k in chosen_states_coupling_labels]
-chosen_states_indices = np.array([label_d_to_node_index(*label) for label in chosen_states_labels])
-chosen_number_of_states = len(chosen_states_indices)
-
-# %%
-# Get Angular Frequency Matrix Diagonal for each B
-all_angular = ENERGIES[:, chosen_bi].real / H_BAR # [state]
-angular = all_angular[chosen_states_indices]
-
-# Form coupling matrix
-couplings = np.zeros((chosen_number_of_states,chosen_number_of_states))
-for i in range(chosen_number_of_states):
-    ai = chosen_states_indices[i]
-    for j in range(chosen_number_of_states):
-        bi = chosen_states_indices[j]
-        la = LABELS_D[ai]
-        lb = LABELS_D[bi]
-        if abs(la[0]-lb[0]) != 1 or abs(la[1]-lb[1]) > 2:
-            continue
-        edge_index = label_pair_to_edge_index(la,lb)
-        couplings[i,j] = COUPLINGS_SPARSE[edge_index,chosen_bi]
-        
-# Get driving frequencies & polarisations
-driving = []
-E_i = []
-for (l1,l2), pulse_time in zip(chosen_coupling_labels, chosen_pulse_time):
-    i1=label_d_to_node_index(*l1)
-    i2=label_d_to_node_index(*l2)
-    driving.append(np.abs(all_angular[i1]-all_angular[i2]))
-    E_i.append((2*np.pi*H_BAR) / (D_0 * COUPLINGS_SPARSE[label_pair_to_edge_index(l1,l2),chosen_bi] * pulse_time))
-driving = np.array(driving)
-print("Driving (rad/s):", driving)
-E_i = np.array(E_i,dtype=np.double)
-print("E (V/m):", E_i)
-
-# Construct times
-times, DT = np.linspace(0,TIME,num=T_STEPS,retstep=True)
-
-# Construct kinetic time step operator (Matrix Diagonal)
-T_OP_DIAG = np.exp(-(1j) * angular * DT/2 )
-
-# Construct potential fixed part time step operator 
-ORDER = 10
-V_TI_M = (-(1j)*D_0*couplings*DT)/H_BAR
-V_TI_M_POWS = np.array([np.linalg.matrix_power(V_TI_M, i)/np.math.factorial(i) for i in range(ORDER)])
-
-# Construct state vector
-state_vector = np.zeros((T_STEPS,chosen_number_of_states), dtype=np.cdouble)
-# state_vector[0,chosen_states_coupling_subindices[0]] = np.sqrt(1.0)
-# state_vector[0,chosen_states_coupling_subindices[1]] = np.sqrt(1)
-state_vector[0,chosen_states_coupling_subindices[2]] = np.sqrt(1)
-
-for t_num in trange(T_STEPS-1):
-    pres = E_i*np.cos(driving*times[t_num])
-    V_TD_POWS = np.sum(pres)**(np.arange(ORDER))
-    V_OP = np.sum(V_TI_M_POWS*V_TD_POWS[:,None,None],axis=0)
-    
-    DU = T_OP_DIAG[:,None] * V_OP[:,:] * T_OP_DIAG[None,:]
-    state_vector[t_num+1] = DU @ state_vector[t_num]
-
-resolution=10
-probabilities = np.abs(state_vector[::resolution,:])**2
+times, probabilities, chosen_states_coupling_subindices = simulate(chosen_states_coupling_labels,chosen_coupling_labels,chosen_pulse_time,chosen_bi,[0,1,0],T_STEPS)
 
 # %%
 # Plot results
-fig,ax = plt.subplots(figsize=(6.2,3.0))
+fig,ax = plt.subplots(figsize=(6.5,2.5))
 ax.set_xlabel('$t\,(\mu s)$')
 ax.set_ylabel('$P_i$')
 ax.set_ylim(0,1.0)
-# ax.set_xlim(0,TIME*1e6)
-ax.set_xlim(0,4000)
+ax.set_xlim(0,global_pulse_time*2*1e6)
+# ax.set_xlim(0,5000)
 states_string = ','.join([f'${label_d_to_latex_string(label)}$' for label in chosen_states_coupling_labels])
 # ax.set_title('{},\n {} @ {}G,\n RabiPeriod {}$\mu s$, SimSteps {},\n unpolarised, {} states simulated'
 #              .format(MOLECULE_STRING,
@@ -357,38 +358,125 @@ states_string = ','.join([f'${label_d_to_latex_string(label)}$' for label in cho
 #                      chosen_number_of_states))
 
 c = ['blue','green','purple','red','grey','grey']
-ax.plot(times[::resolution]*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+ax.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    ax.plot(times[::resolution]*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+    ax.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+    
+inset_gap = 10**(-f_boost-3)
     
 axinset = ax.inset_axes([0.23, 0.6, 0.3, 0.3])
-axinset.plot(times[::resolution]*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+axinset.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    axinset.plot(times[::resolution]*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
-axinset.set_xlim(0,2000)
-axinset.set_ylim(1-0.002,1)
-axinset.axhline(1-0.001,color='black',linestyle='dashed',lw=1)
-axinset.axhline(0.001)
+    axinset.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+axinset.set_xlim(0,global_pulse_time*2*1e6)
+axinset.set_ylim(1-3*inset_gap,1)
+axinset.axhline(1-inset_gap,color='black',linestyle='dashed',lw=1)
 
 axinset2 = ax.inset_axes([0.23, 0.1, 0.3, 0.3])
-axinset2.plot(times[::resolution]*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+axinset2.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    axinset2.plot(times[::resolution]*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
-axinset2.set_xlim(0,2000)
-axinset2.set_ylim(0,0.002)
-axinset2.axhline(0.001,color='black',linestyle='dashed',lw=1)
+    axinset2.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+axinset2.set_xlim(0,global_pulse_time*2*1e6)
+axinset2.set_ylim(0,3*inset_gap)
+axinset2.axhline(inset_gap,color='black',linestyle='dashed',lw=1)
+
+
+axinset2 = ax.inset_axes([0.6, 0.1, 0.3, 0.3])
+# axinset2.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+for i,state_subindex in enumerate(chosen_states_coupling_subindices):
+    axinset2.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+axinset2.set_xlim(5250,5750)
+axinset2.set_ylim(0.25*0.999,0.25*1.0001)
+axinset2.axhline(inset_gap,color='black',linestyle='dashed',lw=1)
     
 print(f"{np.max(probabilities[:,chosen_states_coupling_subindices[1]]):.10f}")
 fig.savefig(f'../images/{MOLECULE_STRING}-2-state-qubit-sim-a.pdf')
 
-# 0.9956479464
-# 0.9954616013
-# Hyp: 0.9909437997
+# %%
+chosen_coupling_labels = [(chosen_states_coupling_labels[0],chosen_states_coupling_labels[1])]
+times_a, probabilities_a, chosen_states_coupling_subindices = simulate(chosen_states_coupling_labels,chosen_coupling_labels,chosen_pulse_time,chosen_bi,[0,1,0])
 
+chosen_coupling_labels = [(chosen_states_coupling_labels[2],chosen_states_coupling_labels[1])]
+times_b, probabilities_b, chosen_states_coupling_subindices = simulate(chosen_states_coupling_labels,chosen_coupling_labels,chosen_pulse_time,chosen_bi,[0,1,0])
 
+chosen_coupling_labels = [(chosen_states_coupling_labels[0],chosen_states_coupling_labels[1])]
+times_c, probabilities_c, chosen_states_coupling_subindices = simulate(chosen_states_coupling_labels,chosen_coupling_labels,chosen_pulse_time,chosen_bi,[0,0,1])
+
+chosen_coupling_labels = [(chosen_states_coupling_labels[1],chosen_states_coupling_labels[2])]
+times_d, probabilities_d, chosen_states_coupling_subindices = simulate(chosen_states_coupling_labels,chosen_coupling_labels,chosen_pulse_time,chosen_bi,[1,0,0])
 
 # %%
+# Plot results
+fig, axs = plt.subplots(4,2,figsize=(6.2,2.5),constrained_layout=True,sharex=True)
+# ax_a.set_xlabel('$t\,(\mu s)$')
+# ax.set_ylabel('$P_i$')
+# ax.set_ylim(0,1.0)
+# ax.set_xlim(0,TIME*1e6)
+# ax.set_xlim(0,2000)
+# states_string = ','.join([f'${label_d_to_latex_string(label)}$' for label in chosen_states_coupling_labels])
+# ax.set_title('{},\n {} @ {}G,\n RabiPeriod {}$\mu s$, SimSteps {},\n unpolarised, {} states simulated'
+#              .format(MOLECULE_STRING,
+#                      states_string,
+#                      f"{B[chosen_bi]/GAUSS:.1f}",
+#                      round(global_pulse_time*1e6),
+#                      T_STEPS,
+#                      chosen_number_of_states))
+# print(axs.shape)
 
-# %%
+axs[3,0].set_xlabel("time ($\mu s$)")
+axs[3,1].set_xlabel("time ($\mu s$)")
+
+axs[1,0].set_ylabel("Populations           ")
+for axl,axh,times,probs,label,xp,yp in [(axs[1,0],axs[0,0],times_a,probabilities_a,r"$|e\rangle\leftrightarrow |0\rangle,\,|e\rangle$ populated",0,0),(axs[3,0],axs[2,0],times_b,probabilities_b,r"$|e\rangle\leftrightarrow |1\rangle,\,|e\rangle$ populated",0,1),(axs[1,1],axs[0,1],times_c,probabilities_c,r"$|e\rangle\leftrightarrow |0\rangle,\,|1\rangle$ populated",1,0),(axs[3,1],axs[2,1],times_d,probabilities_d,r"$|e\rangle\leftrightarrow |1\rangle,\,|0\rangle$ populated",1,1)]:
+    # ax.set_ylim(0,1.0)
+    # # ax.set_xlim(0,TIME*1e6)
+    # ax.set_xlim(0,2000)
+    
+    
+    c = ['blue','green','purple','red','grey','grey']
+    # ax.plot(times*1e6,probs[:,:],c='grey',linewidth=0.5,alpha=0.5);
+    # for i,state_subindex in enumerate(chosen_states_coupling_subindices):
+    #     ax.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=0.5);
+        
+    inset_line = 0.001
+    inset_drop = 0.002
+
+    # axh = ax.inset_axes([0.0, 0.6, 1.0, 0.4])
+    axh.plot(times*1e6,probs[:,:],c='grey',linewidth=0.5,alpha=0.5);
+    for i,state_subindex in enumerate(chosen_states_coupling_subindices):
+        axh.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=0.5);
+    axh.set_xlim(0,2000)
+    axh.set_ylim(1-inset_drop,1)
+    axh.axhline(1-inset_line,color='black',linestyle='dashed',lw=1)
+    axh.axhline(0.001)
+    axh.set_yticks([1-inset_line,1])
+
+    # axl = ax.inset_axes([0.0, 0.0, 1.0, 0.4])
+    axl.plot(times*1e6,probs[:,:],c='grey',linewidth=0.5,alpha=0.5);
+    for i,state_subindex in enumerate(chosen_states_coupling_subindices):
+        axl.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=0.5);
+    axl.set_xlim(0,2000)
+    axl.set_ylim(0,inset_drop)
+    axl.axhline(inset_line,color='black',linestyle='dashed',lw=1)
+    axl.set_yticks([0,inset_line])
+    
+    # Label
+    fig.text(0.297+0.485*xp, 0.36+0.43*yp, label, ha='center', va='center')
+    
+    # Split axes formatting
+    axh.spines.bottom.set_visible(False)
+    axl.spines.top.set_visible(False)
+    axh.xaxis.tick_top()
+    axh.tick_params(labeltop=False)
+    axl.xaxis.tick_bottom()
+    d = .2  # proportion of vertical to horizontal extent of the slanted line
+    kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12, linestyle="none", color='k', mec='k', mew=1, clip_on=False)
+    axh.plot([0, 1], [0, 0], transform=axh.transAxes, **kwargs)
+    axl.plot([0, 1], [1, 1], transform=axl.transAxes, **kwargs)
+
+
+    
+# print(f"{np.max(probabilities[:,chosen_states_coupling_subindices[1]]):.10f}")
+fig.savefig(f'../images/{MOLECULE_STRING}-2-state-qubit-sim.pdf')
 
 # %%

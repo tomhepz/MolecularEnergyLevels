@@ -69,8 +69,8 @@ plt.rcParams['figure.dpi'] = 200
 """
 
 # %%
-MOLECULE_STRING = "Rb87Cs133"
-MOLECULE = Rb87Cs133
+MOLECULE_STRING = "Na23Rb87"
+MOLECULE = Na23Rb87
 N_MAX=2
 
 settings_string = f'{MOLECULE_STRING}NMax{N_MAX}'
@@ -761,7 +761,7 @@ with ProgressBar(total=len(possibilities_d)) as progress:
 
 
 # %%
-show_optimisation_results(possibilities_d,*r, b_max=400, save_name=f"{MOLECULE_STRING}-qubit-zero",latex_table=True,x_plots=3,figsize=(6.5,2.5))
+show_optimisation_results(possibilities_d,*r, b_max=400, save_name=f"{MOLECULE_STRING}-qubit-zero",latex_table=True)
 
 # %% [markdown]
 """
@@ -775,8 +775,8 @@ show_optimisation_results(possibilities_d,*r, b_max=400, save_name=f"{MOLECULE_S
 
 # %%
 
-print(TRANSITION_LABELS_D[6226])
-print(TRANSITION_GATE_TIMES_POL[6226,field_to_bi(199)]*1e6*10**(3/2))
+#print(TRANSITION_LABELS_D[6226])
+#print(TRANSITION_GATE_TIMES_POL[6226,field_to_bi(199)]*1e6*10**(3/2))
 # EDGE_JUMP_LIST[]
 
 # %% tags=[]
@@ -876,7 +876,7 @@ with ProgressBar(total=len(states)) as progress:
     r = maximise_fid_dev(states[:], progress, loop=True)
 
 # %%
-show_optimisation_results(states,*r,save_name=f"{MOLECULE_STRING}-4-state",latex_table=True, x_plots=3, figsize=(6.5,2.5))
+show_optimisation_results(states,*r,save_name=f"{MOLECULE_STRING}-4-state",latex_table=True)
 
 # %% [markdown] tags=[]
 """
