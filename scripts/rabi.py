@@ -157,13 +157,14 @@ H_BAR = scipy.constants.hbar
 """
 
 # %%
-fig, (ax_l,ax_r) = plt.subplots(1,2,figsize=(6,2.5))
+fig, (ax_l,ax_r) = plt.subplots(1,2,figsize=(6.4,2.5),constrained_layout=True)
 
 t = np.linspace(0,4*np.pi,200)
+cmap = plt.get_cmap('Spectral')
 
-ax_l.plot(t,1/(1+0**2)*np.sin(np.sqrt(1+0**2)*t*0.5)**2,'g',alpha=0.8)
-ax_l.plot(t,1/(1+1**2)*np.sin(np.sqrt(1+1**2)*t*0.5)**2,'b--',alpha=0.7)
-ax_l.plot(t,1/(1+2**2)*np.sin(np.sqrt(1+2**2)*t*0.5)**2,'r:',alpha=0.6)
+ax_l.plot(t,1/(1+0**2)*np.sin(np.sqrt(1+0**2)*t*0.5)**2,c='g',alpha=1)
+ax_l.plot(t,1/(1+1**2)*np.sin(np.sqrt(1+1**2)*t*0.5)**2,c='b',linestyle='dashed',alpha=1)
+ax_l.plot(t,1/(1+2**2)*np.sin(np.sqrt(1+2**2)*t*0.5)**2,c='r',linestyle='dotted',alpha=1)
     
 ax_l.set_xlim(0,4*np.pi)
 ax_l.set_ylim(0,1)
@@ -172,22 +173,48 @@ ax_l.xaxis.set_major_formatter(FuncFormatter(
 ))
 ax_l.xaxis.set_major_locator(MultipleLocator(base=np.pi))
 ax_l.set_xlabel(r'$\tau$')
-ax_l.set_ylabel(r'$\pi_2$')
+ax_l.set_ylabel(r'$P_2$')
 
 
-k = np.linspace(-10,10,200)
+k = np.linspace(-10,10,2000)
+
+from matplotlib.collections import LineCollection
+# Create data
+x = k
+y = 1/(1+k**2)*np.sin(np.sqrt(1+k**2)*np.pi*0.5)**2
+cmapval = ((k[:-1]/8)+0.5)
+
+# cmap = plt.get_cmap('coolwarm')
+colors = [cmap(cv) for cv in cmapval]
+# colors = [[c[0],c[1],c[2],1] for c in colors]
+# Create a set of line segments
+points = np.array([x, y]).T.reshape(-1, 1, 2)
+segments = np.concatenate([points[:-1], points[1:]], axis=1)
+# Create a LineCollection object
+lc = LineCollection(segments, colors=colors, lw=2)
+ax_r.add_collection(lc)
 
 
-ax_r.plot(k,1/(1+k**2)*np.sin(np.sqrt(1+k**2)*np.pi*0.5)**2,'blue')
+# ax_r.plot(k,1/(1+k**2)*np.sin(np.sqrt(1+k**2)*np.pi*0.5)**2,'blue')
+
+
 ax_r.plot(k,1/(1+k**2),color='grey', linestyle='dotted')
+ax_r.yaxis.tick_right()
+ax_r.yaxis.set_label_position("right")
+
+ax_l.axhline(0.5, lw=0.5, linestyle='dashed', c='k')
+ax_r.axhline(0.5,xmin=0, xmax=0.45, lw=0.5, linestyle='dashed', c='k')
+
+ax_l.axhline(0.2, lw=0.5, linestyle='dashed', c='k')
+ax_r.axhline(0.2,xmin=0, xmax=0.40, lw=0.5, linestyle='dashed', c='k')
     
 ax_r.set_xlim(-10,10)
 ax_r.set_ylim(0,1)
 
 ax_r.set_xlabel(r'$\kappa$')
-ax_r.set_ylabel(r'$\pi_2$')
+ax_r.set_ylabel(r'$P_2$')
 
-# fig.savefig('../images/2-level-rabi.pdf')
+fig.savefig('../images/2-level-rabi.pdf')
 
 
 # %% [markdown] tags=[]
@@ -222,25 +249,28 @@ fig.savefig("../images/4-loop-population.pdf")
 """
 
 # %%
-example_points = [(10000,200,2),(100,100,0.02),(1000,158.74,2),(1000,0.01,2)]
+example_points = [(10000,200,1,0,2),(100,100,1,0,0.02),(1000,158.74,1,0,2),(1000,0.01,1,0,2),(10,1,0,0,3),(10,1,0.5,0,3),(10,1,1,0,3),(0.5,1,0.5,0.5,3)]
 
 # %%
-fig, axs = plt.subplots(2,2,figsize=(6,4.5))
+fig, axs = plt.subplots(4,2,figsize=(6.5,9))
 
-for i,(k,g,p) in enumerate(example_points):
-    coeff = [1, 2*k, -(1+g**2),-2*k]
+for i,(k,g,p,f,periods) in enumerate(example_points):
+    coeff = [1, 2*(2*f-1)*k, -(1+g**2 + 4*f*(1-f)*k**2),+2*((1-f)-f*g**2)*k]
     roots = np.roots(coeff)
     a=roots[0]
     b=roots[1]
     c=roots[2]
     print(a,b,c)
 
-    normalisation = 1/((a-b)*(c-a)*(b-c))**2
+    normalisation = 1/(g*(a-b)*(c-a)*(b-c))**2
+    
+    def d(mj,mk):
+        return (mj-mk)*(p**(1/2) * g*(mj+mk-2*(1-f)*k) - (1-p)**(1/2) * ((mj-2*(1-f)*k)*(mk-2*(1-f)*k)+g**2))
 
     coefficients = np.array([
-        [a*(b - c)*(2*k+a),b*(c - a)*(2*k+b),c*(a - b)*(2*k+c)],
-        [(b - c)*(2*k+a),(c - a)*(2*k+b),(a - b)*(2*k+c)],
-        [g*a*(b - c),g*b*(c - a),g*c*(a - b)]
+        [(a-2*(1-f)*k)*d(b,c),(b-2*(1-f)*k)*d(c,a),(c-2*(1-f)*k)*d(a,b)],
+        [(a*(a-2*(1-f)*k)-g**2)*d(b,c),(b*(b-2*(1-f)*k)-g**2)*d(c,a),(c*(c-2*(1-f)*k)-g**2)*d(a,b)],
+        [g*d(b,c),g*d(c,a),g*d(a,b)]
     ])
     print(coefficients)
 
@@ -254,7 +284,7 @@ for i,(k,g,p) in enumerate(example_points):
 
     beatFrequencies = np.array([a-b,c-a,b-c])/2
 
-    MAX_T = 2*np.pi*p
+    MAX_T = 2*np.pi*periods
     t=np.linspace(0,MAX_T,1000)
     coses = np.cos(t[:,None] * beatFrequencies[None,:])
 

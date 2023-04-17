@@ -71,7 +71,7 @@ plt.rcParams['figure.dpi'] = 200
 # %%
 MOLECULE_STRING = "Rb87Cs133"
 MOLECULE = Rb87Cs133
-N_MAX=2
+N_MAX=4
 
 settings_string = f'{MOLECULE_STRING}NMax{N_MAX}'
 print(settings_string)
@@ -241,7 +241,7 @@ TRANSITION_LABELS_D[label_pair_to_edge_index(np.array([1,4,3]),np.array([0,2,1])
 
 # %%
 print("plotting zeeman diagram...")
-fig, axs = plt.subplots(3,1,figsize=(5,9),sharex = True)
+fig, axs = plt.subplots(5,1,figsize=(5,9),sharex = True)
 
 b_max_plot_gauss = 400
 b_max_plot_bi = field_to_bi(b_max_plot_gauss)
@@ -389,7 +389,7 @@ print(latex_string)
 
 
 # %%
-@njit(nogil=True)
+# @njit(nogil=True)
 def maximise_fid_dev(possibilities, progress_proxy, max_bi=B_STEPS, loop=False, required_crossing=None,
                      travel_frac=0.2, pol_eff=0.7, dev_exp=(1/3), coincidental_outflow=True
                     ):
@@ -682,6 +682,9 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
     return html_table
 
 
+# %%
+N_MAX_STRUCTURES=2
+
 # %% [markdown]
 """
 # Robust Storage Bit Optimisation
@@ -691,9 +694,9 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
 print("General Robust Storage Qubit Optimisation")
 
 possibilities = []
-for N1 in range(0,N_MAX+1): #[1]:#
+for N1 in range(0,N_MAX_STRUCTURES+1): #[1]:#
     for N2 in [N1-1,N1+1]: #[0]:#
-        if N2 < 0 or N2 > N_MAX:
+        if N2 < 0 or N2 > N_MAX_STRUCTURES:
             continue
         F1_D = 2*N1+I1_D+I2_D
         F2_D = 2*N2+I1_D+I2_D
@@ -754,6 +757,9 @@ for MF1_D in range(-F1_D,F1_D+1,2):#[2,3,4,5]+([6] if N1>0 else []):#range(-F1,F
 possibilities_d = np.array(possibilities)
 
 # %%
+print(possibilities_d.shape)
+
+# %%
 # maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
 with ProgressBar(total=len(possibilities_d)) as progress:
     r = maximise_fid_dev(possibilities_d[:], progress, required_crossing=(0,2),
@@ -783,7 +789,7 @@ print(TRANSITION_GATE_TIMES_POL[6226,field_to_bi(199)]*1e6*10**(3/2))
 print("2-state optimisation")
 
 states=[]
-for N1 in range(0,N_MAX): #[1]:#
+for N1 in range(0,N_MAX_STRUCTURES): #[1]:#
     N2=N1+1
     F1_D = 2*N1+I1_D+I2_D
     for MF1_D in range(-F1_D,F1_D+1,2):

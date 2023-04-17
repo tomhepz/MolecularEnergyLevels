@@ -60,10 +60,11 @@ plt.rcParams['figure.dpi'] = 200
 # %%
 MOLECULE_STRING = "Rb87Cs133"
 MOLECULE = Rb87Cs133
-N_MAX=2
+N_MAX=3
 
 GAUSS = 1e-4 # T
 B = np.concatenate([np.arange(0.001,100,0.1),np.arange(100,500,1),np.arange(500,1001,10)]) * GAUSS
+# B = np.concatenate([np.arange(0.001,1000,10)]) * GAUSS
 
 B_STEPS = len(B)
 B_MIN = B[0]
@@ -128,6 +129,9 @@ def label_degeneracy(N,MF_D):
 def label_d_to_node_index(N,MF_D,d):
     return state_jump_list[N,(MF_D+F_D_MAX)//2]+d
 
+
+# %%
+label_degeneracy(1,8)
 
 # %%
 generated_edge_labels = []

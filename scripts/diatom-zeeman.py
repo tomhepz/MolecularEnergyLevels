@@ -176,7 +176,7 @@ def transfer_efficiency(state1_label, state2_label,bi,pulse_time=0.0001):
 
 
 # %%
-transfer_efficiency((0,5,0),(1,5,2),5)
+# transfer_efficiency((0,5,0),(1,5,2),5)
 
 # %%
 
@@ -184,6 +184,22 @@ transfer_efficiency((0,5,0),(1,5,2),5)
 """
 # General Constants
 """
+
+# %%
+# INITIAL_STATE_LABEL = (0,4,0)
+# INITIAL_STATE_POSITION = label_to_state_no(*INITIAL_STATE_LABEL)
+
+# # Ordered by energy low->high at 181.5G 
+# ACCESSIBLE_STATE_LABELS = [(1, 3, 0), (1, 3, 1), (1, 3, 2), (1, 3, 3), (1, 3, 4), (1, 3, 5), (1, 3, 6), (1, 3, 7), (1, 3, 8),
+#                            (1, 4, 0), (1, 4, 1), (1, 4, 2),(1, 4, 3),(1, 4, 4),(1, 4, 5),
+#                            (1, 5, 0), (1, 5, 1), (1, 5, 2),
+#                             ]
+# ACCESSIBLE_STATE_POSITIONS = [label_to_state_no(N,MF,k) for N,MF,k in ACCESSIBLE_STATE_LABELS]
+
+# CONSIDERED_STATE_LABELS = [INITIAL_STATE_LABEL] + ACCESSIBLE_STATE_LABELS
+# CONSIDERED_STATE_POSITIONS = [INITIAL_STATE_POSITION] + ACCESSIBLE_STATE_POSITIONS
+
+# STATE_CMAP = plt.cm.gist_rainbow(np.linspace(0,1,len(CONSIDERED_STATE_POSITIONS)))
 
 # %%
 INITIAL_STATE_LABEL = (0,5,0)
@@ -225,62 +241,132 @@ COUPLINGS = [all_tdm_matrices_zero,all_tdm_matrices_pos,all_tdm_matrices_neg]
 
 
 # %%
-gs_kw = dict(width_ratios=[1, 1.5], height_ratios=[1, 1])
-fig, axd = plt.subplot_mosaic([['upper left' ,'right'],
-                               ['lower left' ,'right']],
-                              gridspec_kw=gs_kw, figsize=(6, 4), layout="constrained",sharex=True
+magnetic_moments = calculate.magnetic_moment(STATES, N_MAX, Rb87Cs133)
+
+# %%
+gs_kw = dict(width_ratios=[1, 1], height_ratios=[1, 1])
+fig, axd = plt.subplot_mosaic([['upper left' ,'upper right'],
+                               ['lower left' ,'lower right']],
+                              gridspec_kw=gs_kw, figsize=(6.3, 4.0), layout="constrained",sharex=True
                               )
 ax_up = axd["upper left"]
 ax_down = axd["lower left"]
-ax_dipoles = axd["right"]
+ax_moments = axd["upper right"]
+ax_dipoles = axd["lower right"]
 
-ax_up.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1)
-ax_down.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.1)
+
+ax_up.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.05)
+ax_down.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.05)
 
 a=0.8
 lwid=1.5
-ax_down.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,5,0)]*1e-6/scipy.constants.h, color='r', linewidth=lwid, alpha=a)
+ax_down.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,5,0)]*1e-6/scipy.constants.h, color='b', linewidth=lwid, alpha=a)
+ax_down.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,4,0)]*1e-6/scipy.constants.h, color='r', linewidth=lwid, alpha=a,linestyle='dotted')
+ax_down.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,4,1)]*1e-6/scipy.constants.h, color='r', linewidth=lwid, alpha=a,linestyle='dotted')
+
+ax_inset = ax_down.inset_axes([0.4,0.45,0.4,0.55])
+ax_inset.plot(B * GAUSS, ENERGIES * 1e-6 / scipy.constants.h, color='k', linewidth=0.5, alpha=0.3)
+ax_inset.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,5,0)]*1e-6/scipy.constants.h, color='b', linewidth=lwid, alpha=a)
+ax_inset.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,4,0)]*1e-6/scipy.constants.h, color='r', linewidth=lwid, alpha=a,linestyle='dotted')
+ax_inset.plot(B*GAUSS, ENERGIES[:,label_to_state_no(0,4,1)]*1e-6/scipy.constants.h, color='r', linewidth=lwid, alpha=a,linestyle='dotted')
+ax_inset.set_xlim(0,20)
+ax_inset.set_ylim(-0.18, 0.18)
+ax_inset.text(1,-0.122,"F=2",size=7)
+ax_inset.text(1,-0.06,"F=3",size=7)
+ax_inset.text(1,+0.023,"F=4",size=7)
+ax_inset.text(1,+0.125,"F=5",size=7)
+
+gap=0.03
+width = (1-4*gap)/3
+
+ax_inset1 = ax_moments.inset_axes([gap,1-width-gap,width,width])
+ax_inset1.set_xlim(45-4,45+4)
+ax_inset1.set_ylim(4.13, 3.95)
+_,connector_lines1 = ax_moments.indicate_inset_zoom(ax_inset1)
+ax_inset1.text(0.5,0.98,r"$|1,4\rangle_5$",ha="center",va='top',size=7,transform=ax_inset1.transAxes)
+ax_inset1.text(0.5,0.02,r"$|0,4\rangle_1|0,4\rangle_0$",ha="center",va='bottom',size=7,transform=ax_inset1.transAxes)
+
+ax_inset2 = ax_moments.inset_axes([2*gap+width,1-width-gap,width,width])
+ax_inset2.set_xlim(188-4,188+4)
+ax_inset2.set_ylim(4.53, 4.42)
+_,connector_lines2 = ax_moments.indicate_inset_zoom(ax_inset2)
+ax_inset2.text(0.5,0.98,r"$|1,4\rangle_0|1,5\rangle_1$",ha="center",va='top',size=7,transform=ax_inset2.transAxes)
+ax_inset2.text(0.5,0.02,r"$|0,4\rangle_0$",ha="center",va='bottom',size=7,transform=ax_inset2.transAxes)
+
+ax_inset3 = ax_moments.inset_axes([3*gap+2*width,1-width-gap,width,width])
+ax_inset3.set_xlim(323-4,323+4)
+ax_inset3.set_ylim(4.545, 4.540)
+_,connector_lines3 = ax_moments.indicate_inset_zoom(ax_inset3)
+ax_inset3.text(0.5,0.98,r"$|1,4\rangle_1|1,5\rangle_1$",ha="center",va='top',size=7,transform=ax_inset3.transAxes)
+ax_inset3.text(0.5,0.02,r"$|0,4\rangle_0$",ha="center",va='bottom',size=7,transform=ax_inset3.transAxes)
+
+axms = [ax_moments,ax_inset1,ax_inset2,ax_inset3]
+conlines = [connector_lines1,connector_lines2,connector_lines3]
+centreb=[45,188,323]
+i=0
+for ax in axms[1:]:
+    ax.set_xticks([centreb[i]])
+    ax.set_yticks([])
+    ax.tick_params(axis='x', which='major', labelsize=8)
+    conlines[i][0].set_visible(True)
+    conlines[i][1].set_visible(False)
+    conlines[i][2].set_visible(True)
+    conlines[i][3].set_visible(False)
+    i+=1
+    
+ax_inset.tick_params(axis='both', which='major', labelsize=8)
+# _,connector_lines0 = ax_down.indicate_inset_zoom(ax_inset)
 
 from matplotlib.pyplot import cm
-cmap = cm.get_cmap('Reds')
-for k in range(6):
-    si = label_to_state_no(1,4,k)
-    ci = CONSIDERED_STATE_POSITIONS.index(si)
-    col = cmap(k/12+0.5)
-    ax_up.plot(B*GAUSS, ENERGIES[:,si]*1e-6/scipy.constants.h, color=col, linewidth=lwid, alpha=a)
-    ax_dipoles.plot(B * GAUSS, np.abs(tdm_matrices_pos[:, INITIAL_STATE_POSITION, ci]),color=col, linewidth=lwid, alpha=a)
 
-cmap = cm.get_cmap('Blues')
-for k in range(3):
-    si = label_to_state_no(1,5,k)
-    ci = CONSIDERED_STATE_POSITIONS.index(si)
-    col = cmap(k/6+0.5)
-    ax_up.plot(B*GAUSS, ENERGIES[:,si]*1e-6/scipy.constants.h, color=col, linewidth=lwid, alpha=a)
-    ax_dipoles.plot(B * GAUSS, np.abs(tdm_matrices_zero[:, INITIAL_STATE_POSITION, ci]),color=col, linewidth=lwid, alpha=a)
-    
-cmap = cm.get_cmap('Greens')
-for k in range(1):
-    si = label_to_state_no(1,6,k)
-    ci = CONSIDERED_STATE_POSITIONS.index(si)
-    col = cmap(0.75)
-    ax_up.plot(B*GAUSS, ENERGIES[:,si]*1e-6/scipy.constants.h, color=col, linewidth=lwid, alpha=a)
-    ax_dipoles.plot(B * GAUSS, np.abs(tdm_matrices_neg[:, INITIAL_STATE_POSITION, ci]),color=col, linewidth=lwid, alpha=a)
+cmaps = [cm.get_cmap('Reds'),cm.get_cmap('Blues'),cm.get_cmap('Greens')]
+ns = [6,3,1]
+tdms = [tdm_matrices_pos, tdm_matrices_zero, tdm_matrices_neg]
+
+for i in range(3):
+    cmap = cmaps[i]
+    for k in range(ns[i]):
+        si = label_to_state_no(1,INITIAL_STATE_LABEL[1]-1+i,k)
+        ci = CONSIDERED_STATE_POSITIONS.index(si)
+        col = cmap(k/12+0.5)
+        tdm = tdms[i]
+        dipole_moment = np.abs(tdm[:, 0, ci])
+        ax_dipoles.plot(B * GAUSS, dipole_moment, color = col, linewidth=lwid, alpha=a)
+
+        for ax in axms:
+            x = B * GAUSS
+            yz = ENERGIES[:,si]*1e-6/scipy.constants.h
+            ym = magnetic_moments[:,si]/muN
+            pointsz = np.array([x, yz]).T.reshape(-1, 1, 2)
+            pointsm = np.array([x, ym]).T.reshape(-1, 1, 2)
+            segmentsz = np.concatenate([pointsz[:-1], pointsz[1:]], axis=1)
+            segmentsm = np.concatenate([pointsm[:-1], pointsm[1:]], axis=1)
+            alpha_values = dipole_moment[:-1]*(1/0.6)
+            colors = np.ones((len(alpha_values), 4))
+            colors[:, :3] = col[:3]
+            colors[:, 3] = alpha_values
+            lcz = LineCollection(segmentsz, colors=colors,lw=lwid)
+            lcm = LineCollection(segmentsm, colors=colors,lw=lwid)
+            ax.add_collection(lcm)
+            ax.plot(x,ym, color='k', linewidth=0.5, alpha=0.05)
+        ax_up.add_collection(lcz)
 
 
 # Plot Transition Dipole Moments
-polarisation=1
-dipole_op = calculate.dipole(N_MAX,I1,I2,1,polarisation)
-tdm_matrices = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
+# polarisation=1
+# dipole_op = calculate.dipole(N_MAX,I1,I2,1,polarisation)
+# tdm_matrices = (STATES[:, :, CONSIDERED_STATE_POSITIONS].conj().transpose(0, 2, 1) @ (dipole_op @ STATES[:, :, CONSIDERED_STATE_POSITIONS])).real
 
 ax_dipoles.set_xlabel("Magnetic Field $B_z$ (G)")
 ax_dipoles.set_ylabel(r"Transition Dipole Moment $(d_0)$")
 ax_dipoles.set_xlim(0, B_MAX*GAUSS)
-ax_dipoles.set_ylim(0, 1)
+ax_dipoles.set_ylim(0, 0.7)
         
 ax_up.set_xlim(0, B_MAX*GAUSS)
 ax_up.set_ylim(978.8, 981.0)
 ax_down.set_ylim(-0.98, 0.98)
-ax_up.set_ylabel("Energy/$h$ (MHz)")
+# ax_up.set_ylabel("Energy/$h$ (MHz)")
+fig.supylabel("Energy$\,/\,h$ (MHz)",size=10)
 ax_down.set_xlabel("Magnetic Field $B_z$ (G)")
 
 # Split axes formatting
@@ -294,7 +380,69 @@ kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12, linestyle="none", color=
 ax_up.plot([0, 1], [0, 0], transform=ax_up.transAxes, **kwargs)
 ax_down.plot([0, 1], [1, 1], transform=ax_down.transAxes, **kwargs)
 
+#### Magnetic moments
+
+muN = scipy.constants.physical_constants['nuclear magneton'][0]
+
+to_plot = [(0,4,0),(0,4,1)]
+to_plot_indices = np.array([label_to_state_no(N,MF,k) for N,MF,k in to_plot])
+
+c = plt.cm.rainbow(np.linspace(0,1,len(to_plot_indices)))
+i=0
+for moment in to_plot_indices:
+    label = to_plot[i]
+    this_c = ['red','green','blue'][label[1]-4]
+    for ax in axms:
+        ax.plot(B*GAUSS,magnetic_moments[:,moment]/muN, color = this_c, alpha=1,linewidth=1,zorder=10,linestyle='dotted');
+        # ax.text(1.02*B_MAX*GAUSS, magnetic_moments[-1,moment]/muN, r'$|N={},M_F={}\rangle_{}$'.format(int(label[0]),int(label[1]),int(label[2])), va='center', ha='left', fontsize=8, color = this_c)
+    i+=1
+    
+ax_moments.set_ylim(5.5,1.2)
+ax_moments.set_xlim(0,B_MAX*GAUSS)
+
+ax_moments.set_ylabel("Magnetic Moment $(\mu_N)$")
+
+ax_down.text(5,-0.5,"$N=0$",ha='left')
+ax_up.text(5,979.75,"$N=1$",ha='left')
+
+
+# for _,ax in axd.items():
+#     ax.axvline(x=181.5,dashes=(3, 2),color='k',linewidth=1.0)
+
 fig.savefig('../images/zeeman-energies-tdm.pdf')
+
+# %%
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+
+# Function to calculate alpha (opacity) based on x value
+def alpha_function(x):
+    return np.sin(x * np.pi) / 2 + 0.5
+
+# Create data
+x = np.linspace(0, 4 * np.pi, 1000)
+y = np.sin(x)
+# Create a set of line segments
+points = np.array([x, y]).T.reshape(-1, 1, 2)
+segments = np.concatenate([points[:-1], points[1:]], axis=1)
+# Compute alpha values for each segment
+alpha_values = alpha_function(x[:-1])
+# Create RGBA colors for each segment with the given alpha values
+colors = np.zeros((len(alpha_values), 4))
+colors[:, :3] = [0, 0, 1]  # Set the RGB color (blue in this case)
+colors[:, 3] = alpha_values  # Set the alpha channel using the computed alpha_values
+# Create a LineCollection object
+lc = LineCollection(segments, colors=colors)
+
+# Plot the line with varying opacity
+fig, ax = plt.subplots()
+ax.add_collection(lc)
+ax.set_xlim(x.min(), x.max())
+ax.set_ylim(y.min(), y.max())
+
+plt.show()
+
 
 # %% [markdown]
 """

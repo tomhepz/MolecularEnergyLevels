@@ -327,7 +327,7 @@ chosen_coupling_labels = [
 ]
 
 # With what desired rabi period
-f_boost = 2
+f_boost = 0
 
 global_pulse_time = 1100 * 2 * 1e-6 * 10**(f_boost/2) #s
 chosen_pulse_time = [global_pulse_time]*len(chosen_coupling_labels)
@@ -336,13 +336,13 @@ chosen_pulse_time = [global_pulse_time]*len(chosen_coupling_labels)
 chosen_bi = field_to_bi(710)
 
 # Simulation resolution
-T_STEPS =  [803989,314927,195931,65519,41443,21319,9391,50][2]*2
+T_STEPS =  [803989,314927,195931,65519,41443,21319,9391,50][4]*2
 
 times, probabilities, chosen_states_coupling_subindices = simulate(chosen_states_coupling_labels,chosen_coupling_labels,chosen_pulse_time,chosen_bi,[0,1,0],T_STEPS)
 
 # %%
 # Plot results
-fig,ax = plt.subplots(figsize=(6.5,2.5))
+fig,ax = plt.subplots(figsize=(6.5,2.5),zorder=-2,constrained_layout=True)
 ax.set_xlabel('$t\,(\mu s)$')
 ax.set_ylabel('$P_i$')
 ax.set_ylim(0,1.0)
@@ -358,39 +358,64 @@ states_string = ','.join([f'${label_d_to_latex_string(label)}$' for label in cho
 #                      chosen_number_of_states))
 
 c = ['blue','green','purple','red','grey','grey']
-ax.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+# ax.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5,zorder=-2);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    ax.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+    ax.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=1.5,zorder=-2);
     
 inset_gap = 10**(-f_boost-3)
+
+# Create a GridSpec for the inset axes
+inset_gs = GridSpec(2, 1, left=0.58, bottom=0.35, right=0.9, top=0.85, hspace=0.1)
+
+# Create the inset axes using the GridSpec
+axinset = fig.add_subplot(inset_gs[0, 0],zorder=10)
+axinset2 = fig.add_subplot(inset_gs[1, 0], sharex=axinset,zorder=10)
+plt.setp(axinset.get_xticklabels(), visible=False)
     
-axinset = ax.inset_axes([0.23, 0.6, 0.3, 0.3])
-axinset.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+# axinset = ax.inset_axes([0.6, 0.6, 0.3, 0.3])
+# axinset.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.7);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    axinset.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+    axinset.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=1.0);
 axinset.set_xlim(0,global_pulse_time*2*1e6)
 axinset.set_ylim(1-3*inset_gap,1)
 axinset.axhline(1-inset_gap,color='black',linestyle='dashed',lw=1)
 
-axinset2 = ax.inset_axes([0.23, 0.1, 0.3, 0.3])
-axinset2.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
+# axinset2 = ax.inset_axes([0.6, 0.13, 0.3, 0.3])
+axinset2.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.7);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    axinset2.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
+    axinset2.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=1.0);
 axinset2.set_xlim(0,global_pulse_time*2*1e6)
 axinset2.set_ylim(0,3*inset_gap)
 axinset2.axhline(inset_gap,color='black',linestyle='dashed',lw=1)
 
 
-axinset2 = ax.inset_axes([0.6, 0.1, 0.3, 0.3])
+# Split axes formatting
+axinset.spines.bottom.set_visible(False)
+axinset2.spines.top.set_visible(False)
+axinset.xaxis.tick_top()
+axinset.tick_params(labeltop=False)
+axinset2.xaxis.tick_bottom()
+d = .2  # proportion of vertical to horizontal extent of the slanted line
+kwargs = dict(marker=[(-1, -d), (1, d)], markersize=12, linestyle="none", color='k', mec='k', mew=1, clip_on=False)
+axinset.plot([0, 1], [0, 0], transform=axinset.transAxes, **kwargs)
+axinset2.plot([0, 1], [1, 1], transform=axinset2.transAxes, **kwargs)
+
+rect = matplotlib.patches.Rectangle((0.58, 0.35), 0.3, 0.5, facecolor='white', edgecolor='none', transform=fig.transFigure, figure=fig,zorder=0)
+fig.patches.extend([rect])
+
+
+axinset3 = ax.inset_axes([0.12, 0.4, 0.3, 0.3])
 # axinset2.plot(times*1e6,probabilities[:,:],c='grey',linewidth=0.5,alpha=0.5);
 for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    axinset2.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=0.5);
-axinset2.set_xlim(5250,5750)
-axinset2.set_ylim(0.25*0.999,0.25*1.0001)
-axinset2.axhline(inset_gap,color='black',linestyle='dashed',lw=1)
+    axinset3.plot(times*1e6,probabilities[:,state_subindex],c=c[i],linewidth=1.0);
+axinset3.set_xlim(500,600)
+axinset3.set_ylim(0.25*0.99,0.25*1.01)
+axinset3.axhline(inset_gap,color='black',linestyle='dashed',lw=1)
+axinset3.axhline(0.25+0.001,color='black',linestyle='dashed',lw=1)
+axinset3.axhline(0.25-0.001,color='black',linestyle='dashed',lw=1)
     
 print(f"{np.max(probabilities[:,chosen_states_coupling_subindices[1]]):.10f}")
-fig.savefig(f'../images/{MOLECULE_STRING}-2-state-qubit-sim-a.pdf')
+fig.savefig(f'../images/{MOLECULE_STRING}-4-state-loop-sim.pdf')
 
 # %%
 chosen_coupling_labels = [(chosen_states_coupling_labels[0],chosen_states_coupling_labels[1])]
@@ -434,17 +459,17 @@ for axl,axh,times,probs,label,xp,yp in [(axs[1,0],axs[0,0],times_a,probabilities
     
     
     c = ['blue','green','purple','red','grey','grey']
-    # ax.plot(times*1e6,probs[:,:],c='grey',linewidth=0.5,alpha=0.5);
+    # ax.plot(times*1e6,probs[:,:],c='grey',linewidth=1.5,alpha=0.5);
     # for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-    #     ax.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=0.5);
+    #     ax.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=1.5);
         
     inset_line = 0.001
     inset_drop = 0.002
 
     # axh = ax.inset_axes([0.0, 0.6, 1.0, 0.4])
-    axh.plot(times*1e6,probs[:,:],c='grey',linewidth=0.5,alpha=0.5);
+    axh.plot(times*1e6,probs[:,:],c='grey',linewidth=1.5,alpha=0.5);
     for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-        axh.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=0.5);
+        axh.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=1.5);
     axh.set_xlim(0,2000)
     axh.set_ylim(1-inset_drop,1)
     axh.axhline(1-inset_line,color='black',linestyle='dashed',lw=1)
@@ -452,9 +477,9 @@ for axl,axh,times,probs,label,xp,yp in [(axs[1,0],axs[0,0],times_a,probabilities
     axh.set_yticks([1-inset_line,1])
 
     # axl = ax.inset_axes([0.0, 0.0, 1.0, 0.4])
-    axl.plot(times*1e6,probs[:,:],c='grey',linewidth=0.5,alpha=0.5);
+    axl.plot(times*1e6,probs[:,:],c='grey',linewidth=1.5,alpha=0.5);
     for i,state_subindex in enumerate(chosen_states_coupling_subindices):
-        axl.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=0.5);
+        axl.plot(times*1e6,probs[:,state_subindex],c=c[i],linewidth=1.5);
     axl.set_xlim(0,2000)
     axl.set_ylim(0,inset_drop)
     axl.axhline(inset_line,color='black',linestyle='dashed',lw=1)
