@@ -135,8 +135,9 @@ from matplotlib import colors
 plt.rcParams["text.usetex"] = True
 plt.rcParams["font.family"] = 'sans-serif'
 plt.rcParams["figure.autolayout"] = True
-plt.rcParams['figure.figsize'] = (4, 3.5)
-plt.rcParams['figure.dpi'] = 200
+plt.rcParams['figure.figsize'] = (6.3, 2.5)
+plt.rcParams['figure.dpi'] = 100
+plt.rcParams['font.size'] = 12
 plt.rc('text.latex', preamble=r'\usepackage[T1]{fontenc}\usepackage{cmbright}')
 
 # %matplotlib widget
@@ -319,6 +320,204 @@ fig.supylabel(r'$P_i$')
 
 fig.savefig('../images/8-panel-3-state-evolution.pdf')
 
+# %%
+fig= plt.figure(figsize=(6.3,2.5),constrained_layout=True)
+
+gs0 = gridspec.GridSpec(1, 3, figure=fig,width_ratios=(2,1,1))
+
+gs00 = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=gs0[0], height_ratios=(1, 3,1),hspace=0.0)
+
+
+# ax1 = fig.add_subplot(gs00[:-1, :])
+# ax2 = fig.add_subplot(gs00[-1, :-1])
+# ax3 = fig.add_subplot(gs00[-1, -1])
+
+axlu = fig.add_subplot(gs00[0])
+axlm = fig.add_subplot(gs00[1])
+axld = fig.add_subplot(gs00[2])
+
+axm = fig.add_subplot(gs0[1])
+axr = fig.add_subplot(gs0[2])
+
+# fig, axs = plt.subplots(4,2,figsize=(6.3,5),constrained_layout=True,sharey=True,sharex=True)
+k,g,p,periods = (8,0.6,1,4)
+# k,g,p,periods = (40,1,1,4)
+# k,g,p,periods = (20,(2)**0.5,1,4)
+# k,g,p,periods = (500,5,1,4)
+
+coeff = [1, 2*k, -(1+g**2),-2*k]
+roots = np.roots(coeff)
+a=roots[0]
+b=roots[1]
+c=roots[2]
+
+# print(a,b,c)
+
+def d(mj,mk):
+    return (mj-mk)*( ((2*k+mj)*(2*k+mk)) * (1-p)**(1/2) - 2*g*k*p**(1/2))
+
+coefficients = np.array([
+    [(a)*(2*k+a)*d(b,c),(b)*(2*k+b)*d(c,a),(c)*(2*k+c)*d(a,b)],
+    [(2*k+a)*d(b,c),(2*k+b)*d(c,a),(2*k+c)*d(a,b)],
+    [(a)*(g)*d(b,c),(b)*(g)*d(c,a),(c)*(g)*d(a,b)],
+])
+# print(coefficients)
+
+normalisation = 1/(2*g*k*(a-b)*(c-a)*(b-c))**2
+
+averages = np.sum(coefficients**2,1)
+
+beatAmplitudes=2*np.array([
+    [coefficients[0,0]*coefficients[0,1],coefficients[0,2]*coefficients[0,0],coefficients[0,1]*coefficients[0,2]],
+    [coefficients[1,0]*coefficients[1,1],coefficients[1,2]*coefficients[1,0],coefficients[1,1]*coefficients[1,2]],
+    [coefficients[2,0]*coefficients[2,1],coefficients[2,2]*coefficients[2,0],coefficients[2,1]*coefficients[2,2]]
+])
+
+beatFrequencies = np.array([a-b,c-a,b-c])/2
+
+MAX_T = 2*np.pi*periods
+t=np.linspace(0,MAX_T,50000)
+coses = np.cos(t[:,None] * beatFrequencies[None,:])
+
+prob = normalisation * np.array([
+    averages[0]+beatAmplitudes[0,0]*coses[:,0]+beatAmplitudes[0,1]*coses[:,1]+beatAmplitudes[0,2]*coses[:,2],
+    averages[1]+beatAmplitudes[1,0]*coses[:,0]+beatAmplitudes[1,1]*coses[:,1]+beatAmplitudes[1,2]*coses[:,2],
+    averages[2]+beatAmplitudes[2,0]*coses[:,0]+beatAmplitudes[2,1]*coses[:,1]+beatAmplitudes[2,2]*coses[:,2]
+])
+
+g_here=0.6
+samples = 1000
+k_plot_max = 10
+k_plot = np.linspace(0,k_plot_max,samples)
+f_plot = np.zeros((3,samples))
+amp_plot = np.zeros((3,samples))
+for si,k_here in enumerate(k_plot):
+    coeff = [1, 2*k_here, -(1+g_here**2),-2*k_here]
+    roots = np.roots(coeff)
+    a=roots[0]
+    b=roots[1]
+    c=roots[2]
+    if a>b:
+        b,a=a,b
+    
+    def d(mj,mk):
+        return (mj-mk)*( ((2*k_here+mj)*(2*k_here+mk)) * (1-p)**(1/2) - 2*g_here*k_here*p**(1/2))
+
+    coefficients = np.array([
+        [(a)*(2*k_here+a)*d(b,c),(b)*(2*k_here+b)*d(c,a),(c)*(2*k_here+c)*d(a,b)],
+        [(2*k_here+a)*d(b,c),(2*k_here+b)*d(c,a),(2*k_here+c)*d(a,b)],
+        [(a)*(g_here)*d(b,c),(b)*(g_here)*d(c,a),(c)*(g_here)*d(a,b)],
+    ])
+    # print(coefficients)
+
+    normalisation = 1/(2*g_here*k_here*(a-b)*(c-a)*(b-c))**2
+
+    averages = np.sum(coefficients**2,1)
+
+    beatAmplitudes=2*normalisation*np.array([
+        [coefficients[0,0]*coefficients[0,1],coefficients[0,2]*coefficients[0,0],coefficients[0,1]*coefficients[0,2]],
+        [coefficients[1,0]*coefficients[1,1],coefficients[1,2]*coefficients[1,0],coefficients[1,1]*coefficients[1,2]],
+        [coefficients[2,0]*coefficients[2,1],coefficients[2,2]*coefficients[2,0],coefficients[2,1]*coefficients[2,2]]
+    ])
+
+    beatFrequencies = np.array([a-b,c-a,b-c])/2
+    f_plot[:,si] = beatFrequencies
+    amp_plot[:,si] = beatAmplitudes[1,:]
+
+
+axm.plot(k_plot,np.abs(f_plot[0,:].T),c='red',lw=line_width,alpha=0.9)
+axm.plot(k_plot,np.abs(f_plot[1,:].T),c='orange',lw=line_width,alpha=0.9)
+axm.plot(k_plot,np.abs(f_plot[2,:].T),c='green',lw=line_width,alpha=0.9)
+
+axr.plot(k_plot,-(amp_plot[0,:]),c='red',lw=line_width,alpha=0.9)
+axr.plot(k_plot,-(amp_plot[1,:]),c='orange',lw=line_width,alpha=0.9)
+axr.plot(k_plot,-(amp_plot[2,:]),c='green',lw=line_width,alpha=0.9)
+
+
+line_width=1.5
+
+for ax in [axlu,axlm,axld]:
+    ax.plot(t/np.pi,prob[0],c='blue',lw=line_width,alpha=0.5)
+    ax.plot(t/np.pi,prob[2],c='red',lw=line_width,alpha=0.8)
+    ax.plot(t/np.pi,prob[1],c='green',lw=line_width,alpha=0.8)
+
+    ax.set_xlim(0,MAX_T/np.pi)
+
+
+    
+axlm.set_ylim(0,1)
+axlm.set_xticks([])
+ef = 3*(4*g**2+g**4)/(16*k**2)
+n = int(-np.log10(ef))
+
+axlu.set_ylim(1-10**(-n),1)    
+axlu.set_yticks([1-10**(-n)/2,1])
+axld.set_ylim(0,10**(-n))    
+axld.set_yticks([0,10**(-n)/2])
+
+axlu.set_xticks([])
+axlm.set_xticks([])
+axld.xaxis.get_major_locator().set_params(integer=True)
+
+axm.set_xlim(0,k_plot_max)
+axr.set_xlim(0,k_plot_max)
+axr.axhline(0,linestyle='dashed',lw=1,c='k',zorder=-1)
+axr.axhline(0.5,linestyle='dashed',lw=1,c='k',zorder=-1)
+
+axm.axhline(1,linestyle='dashed',lw=1,c='k',zorder=-1)
+
+axr.axvline(8,linestyle='dashed',lw=1,c='k',zorder=-1)
+axm.axvline(8,linestyle='dashed',lw=1,c='k',zorder=-1)
+
+axm.yaxis.get_major_locator().set_params(integer=True)
+from matplotlib.ticker import MultipleLocator
+axm.yaxis.set_minor_locator(MultipleLocator(1))
+
+# ef = (4*g**2+g**4)/16*k**2
+# axlu.plot(t/np.pi, 1-ef*np.sin(0.25*t)**4,c='grey',alpha=0.5)
+# axlu.plot(t/np.pi, 1-2*ef*np.sin(0.25*t)**2,c='grey',alpha=0.5)
+# axlu.plot(t/np.pi, 1-(ef/2)*np.sin(0.5*t)**2,c='grey',alpha=0.5)
+
+axlu.plot(t/np.pi, 1-(ef)*np.sin(0.25*t)**4,c='grey',alpha=0.5,linestyle='dotted')
+
+axld.set_xlabel(r"$\tau \,(\pi)$")
+axlm.set_ylabel(r"$P_i$")
+
+axm.set_xlabel(r"$\kappa$")
+axm.set_ylabel(r"Component Frequencies $(\Omega)$")
+
+axr.set_xlabel("$\kappa$")
+axr.set_ylabel(r"$P_2$ Component Amplitudes")
+axr.yaxis.tick_right()
+axr.yaxis.set_label_position("right")
+
+axm.annotate(r"",
+        xy=(5, 7), xycoords='data',
+        xytext=(5, 5.5), textcoords='data',
+        arrowprops=dict(arrowstyle="<-", connectionstyle="arc3"),
+           zorder=300)
+axm.annotate(r"",
+        xy=(5, 3.1), xycoords='data',
+        xytext=(5, 4.5), textcoords='data',
+        arrowprops=dict(arrowstyle="<-", connectionstyle="arc3"),
+           zorder=300)
+axm.text(4, 6.2, r"$\Omega$", va='center',ha='center', zorder=300,rotation=0)
+
+# axlu.plot(t/np.pi,1-prob[2],c='red',lw=line_width,alpha=0.8)
+
+# axlm.set_title(f'$\kappa={k},\Gamma={g},p={p}$')
+
+    # ax.set_xlabel(r'$\tau (\pi)$')
+    # ax.set_ylabel(r'$P_i$')
+# fig.supxlabel(r'$\tau (\pi)$')
+# fig.supylabel(r'$P_i$')
+
+
+fig.savefig('../images/3-state-good-explained.pdf')
+
+# %%
+beatAmplitudes.shape
+
 
 # %%
 def twice_average_fidelity(k,g):
@@ -363,7 +562,7 @@ gs = np.logspace(*g_exp_range,1000)
 
 ks, gs = np.meshgrid(ks,gs)
 
-twice_average_fidelities = twice_average_fidelity(ks,gs)
+twice_average_fidelities = half_of_res(ks,gs,0.999)# twice_average_fidelity(ks,gs)
 minus_fidelities = minus_fidelity(ks,gs)
 # maximum_fidelities = maximum_fidelity(ks,gs)
 # maximum_fidelities = np.abs((1-(gs/ks)**2))
@@ -408,7 +607,7 @@ for ax, fidelities,title in [(axl,twice_average_fidelities,r"$2\langle P_{2}\ran
     CS1 = ax.contour(ks,gs,fidelities,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
 
     fmt = {}
-    strs = [f"{n*100:.3f}\%" for n in noted_levels]
+    strs = [f"{n*100:.3f}%" for n in noted_levels]
     for l, s in zip(CS1.levels, strs):
         fmt[l] = s
 

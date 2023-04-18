@@ -355,14 +355,15 @@ $$\implies E'_{\tilde{N},M}(\epsilon) = \tilde{N} (\tilde{N}+1) + \epsilon' f(\t
 
 # %%
 # Generalised Units code
-fig, (ax, ax2) = plt.subplots(1,2,constrained_layout=True)
+fig, (ax, ax2) = plt.subplots(1,2,constrained_layout=True,figsize=(6.3,2.2))
 
 cmaps = ['Purples','Blues','Greens','Oranges','Reds','autumn','autumn','autumn']
 # cmap = cm.get_cmap('jet')
 positions = []
 
 pi=0
-positions=[(17,-9.5,-26),(16.8,-3.8,-22),(17.7,-2.0,-17),(17.3,2.6,-18),(17.2,6.3,-12),(18,10.1,-6)]
+positions=np.array([(11.5,-8.2,-24),(13,-4.5,-19),(15.5,-1.2,-15),(16.5,3.5,-15),(17.2,6.6,-11),(18,10.2,-6)])
+positions[:,1]+=0.4
 for i, N, M in state_iter(3):
     cmap = cm.get_cmap(cmaps[N])
     col = cmap((M+N+1)/(2*N+2))
@@ -405,30 +406,36 @@ importantprobs = np.abs(states[:, sorti[:important_count], state]) ** 2
 print(importantprobs.shape)
 
 colors = []
-h=np.zeros(E_STEPS)
-# ii=0
-for i in sorti[:important_count]:
-    for j, N, M in state_iter(7):
+# h=np.zeros(E_STEPS)
+plot_probs = np.zeros((important_count,E_STEPS))
+ii=0
+# for i in sorti[:important_count]:
+for j, N, M in state_iter(7):
+    for i in sorti[:important_count]:
         if j == i: 
             print(N,M)
             cmap = cm.get_cmap(cmaps[N])
             colors.append(cmap((M+N+1)/(2*N+2)))
+            plot_probs[ii,:] = np.abs(states[:, i, state]) ** 2 #importantprobs[:,i]
+            ii+=1
             # this_probs = importantprobs[:,ii]
 #             ii+=1
 #             max_ei = np.argmax(this_probs)
 #             if ii <5:
 #                 ax2.text(E[max_ei] * (D_0 / B_0), h[max_ei]+this_probs[max_ei]/2 , "test")# fr"|{N},{M}\rangle")
 #             h+=this_probs
+
+
     
 # col = cm.plasma(np.linspace(0, 1, important_count))
-ax2.stackplot(E * (D_0 / B_0), importantprobs.T,colors=colors,lw=0.5,ec='face',aa=True)
+ax2.stackplot(E * (D_0 / B_0), plot_probs,colors=colors,lw=0.5,ec='face',aa=True)
 ax2.set_ylabel(r"$|\langle N,M|\tilde{N}=1,M=0\rangle|^2$")
 ax2.set_xlabel("Electric Field $(B_0/d_0)$")
 ax2.set_ylim(0, 1.0)
 ax2.set_xlim(0, 25)
 
-ax2.text(3,0.2, r"$|1,0\rangle$", ha='center', va='center')
-ax2.text(9,0.27, r"$|0,0\rangle$", ha='center', va='center')
+ax2.text(3,0.5, r"$|1,0\rangle$", ha='center', va='center')
+ax2.text(9,0.2, r"$|0,0\rangle$", ha='center', va='center')
 ax2.text(15,0.5, r"$|2,0\rangle$", ha='center', va='center')
 ax2.text(19,0.75, r"$|3,0\rangle$", ha='center', va='center')
 ax2.text(22.5,0.94, r"$|4,0\rangle$", ha='center', va='center')
