@@ -185,13 +185,13 @@ y = 1/(1+k**2)*np.sin(np.sqrt(1+k**2)*np.pi*0.5)**2
 cmapval = ((k[:-1]/8)+0.5)
 
 # cmap = plt.get_cmap('coolwarm')
-colors = [cmap(cv) for cv in cmapval]
+colors_here = [cmap(cv) for cv in cmapval]
 # colors = [[c[0],c[1],c[2],1] for c in colors]
 # Create a set of line segments
 points = np.array([x, y]).T.reshape(-1, 1, 2)
 segments = np.concatenate([points[:-1], points[1:]], axis=1)
 # Create a LineCollection object
-lc = LineCollection(segments, colors=colors, lw=2)
+lc = LineCollection(segments, colors=colors_here, lw=2)
 ax_r.add_collection(lc)
 
 
@@ -249,30 +249,35 @@ fig.savefig("../images/4-loop-population.pdf")
 """
 
 # %%
-example_points = [(10000,200,1,0,2),(100,100,1,0,0.02),(1000,158.74,1,0,2),(1000,0.01,1,0,2),(10,1,0,0,3),(10,1,0.5,0,3),(10,1,1,0,3),(0.5,1,0.5,0.5,3)]
+example_points = [(2, 1, 1,  4), (6, 1, 1,  4),
+                  (2, 4, 1,  4), (6, 1, 0.5,  4),
+                  (0.1,  1, 1,  4), (6, 1,    0,  4),
+                  # (0.5,  1, 1,  4),     (0.5,      0.2,  1,  4),
+                   (0.1,  0.5, 1,  4),     (100,  0.5,  1,  4),
+                 ]
 
 # %%
-fig, axs = plt.subplots(4,2,figsize=(6.5,9))
+fig, axs = plt.subplots(4,2,figsize=(6.3,5),constrained_layout=True,sharey=True,sharex=True)
 
-for i,(k,g,p,f,periods) in enumerate(example_points):
-    coeff = [1, 2*(2*f-1)*k, -(1+g**2 + 4*f*(1-f)*k**2),+2*((1-f)-f*g**2)*k]
+for i,(k,g,p,periods) in enumerate(example_points):
+    coeff = [1, 2*k, -(1+g**2),-2*k]
     roots = np.roots(coeff)
     a=roots[0]
     b=roots[1]
     c=roots[2]
-    print(a,b,c)
-
-    normalisation = 1/(g*(a-b)*(c-a)*(b-c))**2
+    # print(a,b,c)
     
     def d(mj,mk):
-        return (mj-mk)*(p**(1/2) * g*(mj+mk-2*(1-f)*k) - (1-p)**(1/2) * ((mj-2*(1-f)*k)*(mk-2*(1-f)*k)+g**2))
+        return (mj-mk)*( ((2*k+mj)*(2*k+mk)) * (1-p)**(1/2) - 2*g*k*p**(1/2))
 
     coefficients = np.array([
-        [(a-2*(1-f)*k)*d(b,c),(b-2*(1-f)*k)*d(c,a),(c-2*(1-f)*k)*d(a,b)],
-        [(a*(a-2*(1-f)*k)-g**2)*d(b,c),(b*(b-2*(1-f)*k)-g**2)*d(c,a),(c*(c-2*(1-f)*k)-g**2)*d(a,b)],
-        [g*d(b,c),g*d(c,a),g*d(a,b)]
+        [(a)*(2*k+a)*d(b,c),(b)*(2*k+b)*d(c,a),(c)*(2*k+c)*d(a,b)],
+        [(2*k+a)*d(b,c),(2*k+b)*d(c,a),(2*k+c)*d(a,b)],
+        [(a)*(g)*d(b,c),(b)*(g)*d(c,a),(c)*(g)*d(a,b)],
     ])
-    print(coefficients)
+    # print(coefficients)
+    
+    normalisation = 1/(2*g*k*(a-b)*(c-a)*(b-c))**2
 
     averages = np.sum(coefficients**2,1)
 
@@ -304,13 +309,16 @@ for i,(k,g,p,f,periods) in enumerate(example_points):
     ax.set_xlim(0,MAX_T/np.pi)
     ax.xaxis.get_major_locator().set_params(integer=True)
     ax.set_ylim(0,1)
-    ax.set_title(f'$\kappa={k},\Gamma={g}$')
+    ax.set_title(f'$\kappa={k},\Gamma={g},p={p}$')
 
-    ax.set_xlabel(r'$\tau (\pi)$')
-    ax.set_ylabel(r'$\pi_i$')
+    # ax.set_xlabel(r'$\tau (\pi)$')
+    # ax.set_ylabel(r'$P_i$')
+fig.supxlabel(r'$\tau (\pi)$')
+fig.supylabel(r'$P_i$')
 
 
-# fig.savefig('../images/4-panel-3-state-evolution.pdf')
+fig.savefig('../images/8-panel-3-state-evolution.pdf')
+
 
 # %%
 def twice_average_fidelity(k,g):
@@ -347,8 +355,8 @@ def maximum_fidelity(k,g):
     
     return numerator/denominator
 
-k_exp_range = (-5,5)
-g_exp_range = (-5,5)
+k_exp_range = (-3,3)
+g_exp_range = (-3,3)
 
 ks = np.logspace(*k_exp_range,1000)
 gs = np.logspace(*g_exp_range,1000)
@@ -358,8 +366,8 @@ ks, gs = np.meshgrid(ks,gs)
 twice_average_fidelities = twice_average_fidelity(ks,gs)
 minus_fidelities = minus_fidelity(ks,gs)
 # maximum_fidelities = maximum_fidelity(ks,gs)
-maximum_fidelities = np.abs((1-(gs/ks)**2))
-perturbation_fidelities = 1-(gs**2)*((1-2*1*ks+ks**2)/(1-2*ks**2+ks**4))
+# maximum_fidelities = np.abs((1-(gs/ks)**2))
+# perturbation_fidelities = 1-(gs**2)*((1-2*1*ks+ks**2)/(1-2*ks**2+ks**4))
 
 g2 = gs**2
 k2 = ks**2
@@ -372,6 +380,108 @@ difference = (np.log10(1-twice_average_fidelities+1e-9)-np.log10(1-expansion_fid
 
 
 
+
+# %%
+colors
+
+# %% tags=[]
+fig, (axl,axm) = plt.subplots(1,2,figsize=(6.3,3),sharey=True,sharex=True,constrained_layout=True)
+
+Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
+
+noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+# noted_levels=[0.9,0.99,0.999]
+
+axl.set_ylabel('$\Gamma$')
+for ax, fidelities,title in [(axl,twice_average_fidelities,r"$2\langle P_{2}\rangle_t$"),(axm,1-minus_fidelities,r"$2\langle P_{3}\rangle_t$")]:#,(axr,np.abs(twice_average_fidelities-minus_fidelities),"expansion")]:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+    ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
+    ax.set_xlabel('$\kappa$')
+
+    k=7
+    normalised_fidelies = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
+    cf = ax.contourf(ks,gs,normalised_fidelies,11,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
+    cf = ax.contourf(ks,gs,normalised_fidelies,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10,edgecolor='face',linewidth=0.2)
+    
+    CS1 = ax.contour(ks,gs,fidelities,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
+
+    fmt = {}
+    strs = [f"{n*100:.3f}\%" for n in noted_levels]
+    for l, s in zip(CS1.levels, strs):
+        fmt[l] = s
+
+    labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
+    ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions,fontsize='small')
+    ax.set_title(title)
+    
+    # ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    # ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    
+    # ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+    # ax.plot([10,10**k_exp_range[1]],[2**(2/3)*(10)**(2/3),2**(2/3)*(10**k_exp_range[1])**(2/3)],zorder=100,color='black',linewidth=1,dashes=(3,2),alpha=0.7)
+    # ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+
+    # ax.arrow(astart, 2**(2/3)*(astart)**(2/3), aend-astart, 2**(2/3)*(aend)**(2/3)-2**(2/3)*(astart)**(2/3),zorder=100,head_width=0.05, head_length=0.1, fc='k', ec='k')
+    
+astart = 10
+aend = 800
+axl.annotate(r"",
+        xy=(astart, 2*(astart)**(1/2)), xycoords='data',
+        xytext=(aend, 2*(aend)**(1/2)), textcoords='data',
+        arrowprops=dict(arrowstyle="<-", connectionstyle="arc3"),
+           zorder=300)
+
+axl.text(15, 2*(15)**(1/2)+2, r"$\Gamma=2\sqrt{\kappa}$", va='bottom', zorder=300,rotation=26.5)
+
+
+axm.annotate(r"",
+        xy=(20, 20), xycoords='data',
+        xytext=(800, 800), textcoords='data',
+        arrowprops=dict(arrowstyle="<-", connectionstyle="arc3"),
+           zorder=300)
+
+axm.text(40, 40+25, r"$\Gamma=\kappa$", va='bottom', zorder=300,rotation=45)
+
+
+#     for k,g,_ in example_points:
+#         ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
+
+
+
+
+
+fig.savefig('../images/3-level-phase.pdf')
+
+# %%
+fig, ax = plt.subplots(1,1,figsize=(4,4),constrained_layout=True)
+
+# Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
+
+# noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
+# noted_levels=[0.9,0.99,0.999]
+
+# print(difference)
+
+
+ax.set_ylabel('$\Gamma$')
+ax.set_xlabel('$\kappa$')
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
+ax.set_ylim(10**g_exp_range[0],10)
+cf = ax.contourf(ks,gs,difference,40,cmap='RdYlGn',alpha=1,vmin=-1,vmax=1, extend='both')
+CS1 = ax.contour(ks,gs,difference,[0.001,0.01,0.1,1], colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
+CS1 = ax.contour(ks,gs,difference,[-1,-0.1,-0.01,-0.001], colors='k',linestyles='dotted',linewidths=0.5,alpha=0.5,zorder=20)
+
+ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
+cbar = fig.colorbar(cf)
+
+# fig.savefig('../images/3-level-phase-error.pdf')
 
 # %%
 fig, ax = plt.subplots(1,1,figsize=(4,4),constrained_layout=True)
@@ -413,90 +523,6 @@ ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_ra
     
 
 fig.savefig('../images/3-level-phase.pdf')
-
-# %%
-print(np.unravel_index(normalised_fidelies.argmin(), normalised_fidelies.shape))
-print(gs[514, 502])
-print(ks[514, 502])
-
-# %% tags=[]
-fig, (axl,axm,axr) = plt.subplots(1,3,figsize=(6,3),sharey=True,sharex=True,constrained_layout=True)
-
-Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
-
-# noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
-noted_levels=[0.9,0.99,0.999]
-
-
-
-axl.set_ylabel('$\Gamma$')
-for ax, fidelities,title in [(axl,twice_average_fidelities,r"$\langle P^{max}_{|1\rangle}\rangle$"),(axm,1-minus_fidelities,r"$1-\langle P^{max}_{|2\rangle}\rangle$"),(axr,np.abs(twice_average_fidelities-minus_fidelities),"expansion")]:
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-    ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
-    ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
-    ax.set_xlabel('$\kappa$')
-
-    k=10
-    normalised_fidelies = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
-    # cf = ax.contourf(ks,gs,normalised_fidelies,10,cmap='RdYlGn',norm=Norm,alpha=1,zorder=-10)
-    cf = ax.contourf(ks,gs,normalised_fidelies,40,cmap='RdYlGn',norm=Norm,alpha=1,zorder=10)
-    CS1 = ax.contour(ks,gs,fidelities,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
-
-    fmt = {}
-    strs = [f"{n*100:.3f}\%" for n in noted_levels]
-    for l, s in zip(CS1.levels, strs):
-        fmt[l] = s
-
-    labelpositions = [(0.01,np.sqrt(1/n-1)) for n in noted_levels]
-    # ax.clabel(CS1, CS1.levels, fmt=fmt,manual=labelpositions,fontsize='small')
-    ax.set_title(title)
-    
-    ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-    ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-    
-    ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-    ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2**(2/3)*(10**k_exp_range[0])**(2/3),2**(2/3)*(10**k_exp_range[1])**(2/3)],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-    ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-    
-
-#     for k,g,_ in example_points:
-#         ax.plot(k, g, 'ko',markersize=5,zorder=100,mfc='none')
-
-
-
-
-
-fig.savefig('../images/3-level-phase.pdf')
-
-# %%
-fig, ax = plt.subplots(1,1,figsize=(4,4),constrained_layout=True)
-
-# Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
-
-# noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
-# noted_levels=[0.9,0.99,0.999]
-
-# print(difference)
-
-
-ax.set_ylabel('$\Gamma$')
-ax.set_xlabel('$\kappa$')
-ax.set_xscale('log')
-ax.set_yscale('log')
-ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
-ax.set_ylim(10**g_exp_range[0],10)
-cf = ax.contourf(ks,gs,difference,40,cmap='RdYlGn',alpha=1,vmin=-1,vmax=1, extend='both')
-CS1 = ax.contour(ks,gs,difference,[0.001,0.01,0.1,1], colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
-CS1 = ax.contour(ks,gs,difference,[-1,-0.1,-0.01,-0.001], colors='k',linestyles='dotted',linewidths=0.5,alpha=0.5,zorder=20)
-
-ax.axhline(2**1.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-ax.axvline(0.5,zorder=50,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[2*(10**k_exp_range[0])**0.5,2*(10**k_exp_range[1])**0.5],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-ax.plot([10**k_exp_range[0],10**k_exp_range[1]],[10**k_exp_range[0],10**k_exp_range[1]],zorder=100,color='grey',linewidth=1,dashes=(3,2),alpha=0.5)
-cbar = fig.colorbar(cf)
-
-# fig.savefig('../images/3-level-phase-error.pdf')
 
 # %%
 twice_average_fidelities[999,0]
@@ -663,23 +689,23 @@ fig, ax = plt.subplots()
 # 10000,200
 
 INITIAL_STATE = 0
-FIRST = 2.43e7
-DETUNING = 1
+FIRST = 2.43e4
+DETUNING = 40
 angular = [0, FIRST, FIRST+DETUNING]
 N_STATES = len(angular)
 
 # Construct coupling matrix
 global_coupling = 1e0
 coupling = global_coupling*np.array([
-        [0,1,200],
+        [0,1,0.1],
         [1,0,0],
-        [200,0,0]
+        [0.1,0,0]
         ])
 
 driving = angular[1]-angular[0]
 
 # Construct
-T_MAX = 0.1*np.pi / global_coupling
+T_MAX = 2*np.pi / global_coupling
 T_STEPS = 1705829
 times, DT = np.linspace(0, T_MAX, num=T_STEPS, retstep=True)
 print("time_step:", DT, "Driving Period: ",2*np.pi/driving, "ratio (hope<1):", DT*driving/(2*np.pi))
@@ -702,8 +728,8 @@ H = np.array([H_BAR/2 * np.multiply(coupling, T) for T in Ts])
 finals = []
 
 state = np.zeros(N_STATES) # initial state
-state[INITIAL_STATE] = (0.501)**(1/2)
-state[2] = (0.499)**(1/2)
+state[INITIAL_STATE] = 1#(0.501)**(1/2)
+# state[2] = (0.499)**(1/2)
 
 
 for i in range(T_STEPS):
