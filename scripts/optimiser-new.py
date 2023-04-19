@@ -71,7 +71,7 @@ plt.rcParams['figure.dpi'] = 200
 # %%
 MOLECULE_STRING = "Rb87Cs133"
 MOLECULE = Rb87Cs133
-N_MAX=4
+N_MAX=2
 
 settings_string = f'{MOLECULE_STRING}NMax{N_MAX}'
 print(settings_string)
@@ -270,7 +270,7 @@ fig.savefig(f'../appendix/images/{MOLECULE_STRING}-zeeman.pdf')
 
 # %%
 print("plotting magnetic moments...")
-fig, ax = plt.subplots(figsize=(4,6))
+fig, ax = plt.subplots(figsize=(6.5,9))
 
 ax.set_xlim(0,B_MAX/GAUSS)
 ax.set_xlabel('Magnetic Field $B_z$ (G)')
@@ -298,6 +298,8 @@ for state_label in states_to_plot:
     
     index = label_d_to_node_index(*state_label)
     ax.plot(B/GAUSS, MAGNETIC_MOMENTS[index,:]/muN,linestyle=ls, color=col, alpha=0.65,linewidth=lw);
+    if state_label[0]==0:
+        ax.text(1000,MAGNETIC_MOMENTS[index,-1]/muN+state_label[1]/90,state_label)
 
 fig.savefig(f'../appendix/images/{MOLECULE_STRING}-magnetic-dipole-moments.pdf')
 
@@ -389,7 +391,7 @@ print(latex_string)
 
 
 # %%
-# @njit(nogil=True)
+@njit(nogil=True)
 def maximise_fid_dev(possibilities, progress_proxy, max_bi=B_STEPS, loop=False, required_crossing=None,
                      travel_frac=0.2, pol_eff=0.7, dev_exp=(1/3), coincidental_outflow=True
                     ):
@@ -630,7 +632,7 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
             at_moment = np.average(MAGNETIC_MOMENTS[state_numbers,peak_rating_bi])/muN
             
             field_deviation = 20 #mG
-            moment_deviation = 0.5 #muN
+            moment_deviation = 0.25 #muN
               
             axinset = ax.inset_axes([0.65, 0.65, 0.3, 0.3])
             axinset.plot(B/GAUSS,MAGNETIC_MOMENTS[state_numbers,:].T/muN)
@@ -638,6 +640,9 @@ def show_optimisation_results(possibilities, unpol_db_req, pol_db_req, unpol_dis
             
             axinset.set_xlim(at_field-field_deviation,at_field+field_deviation)
             axinset.set_ylim(at_moment-moment_deviation,at_moment+moment_deviation)
+            
+            axinset.set_xticks([at_field])
+            axinset.set_yticks([])
             
             ax.axvline(at_field,color='black',linewidth=1,dashes=(3,2))
         
@@ -767,7 +772,7 @@ with ProgressBar(total=len(possibilities_d)) as progress:
 
 
 # %%
-show_optimisation_results(possibilities_d,*r, b_max=400, save_name=f"{MOLECULE_STRING}-qubit-zero",latex_table=True,x_plots=3,figsize=(6.5,2.5))
+show_optimisation_results(possibilities_d,*r, b_max=400, save_name=f"{MOLECULE_STRING}-qubit-zero",latex_table=True,x_plots=3,figsize=(6.5,2.0))
 
 # %% [markdown]
 """
@@ -879,10 +884,10 @@ states=np.array(states)
 # %% tags=[]
 # maximise_fid_dev(possibilities_d[:,:],required_crossing=[0,2],table_len=12,x_plots=4,y_plots=3,latex_table=True,save_name=f"{MOLECULE_STRING}-qubit-zero",allow_travel=True)
 with ProgressBar(total=len(states)) as progress:
-    r = maximise_fid_dev(states[:], progress, loop=True)
+    r_loop = maximise_fid_dev(states[:], progress, loop=True)
 
 # %%
-show_optimisation_results(states,*r,save_name=f"{MOLECULE_STRING}-4-state",latex_table=True, x_plots=3, figsize=(6.5,2.5))
+show_optimisation_results(states,*r_loop,save_name=f"{MOLECULE_STRING}-4-state",latex_table=True, x_plots=3, figsize=(6.5,2.0))
 
 # %% [markdown] tags=[]
 """

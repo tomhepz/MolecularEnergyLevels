@@ -224,7 +224,7 @@ fig.savefig('../images/2-level-rabi.pdf')
 """
 
 # %%
-fig, ax = plt.subplots(1,figsize=(3.0,2.1),constrained_layout=True)
+fig, ax = plt.subplots(1,figsize=(2.5,1.8),constrained_layout=True)
 
 t = np.linspace(0,4*np.pi,200)
 
@@ -254,11 +254,11 @@ example_points = [(2, 1, 1,  4), (6, 1, 1,  4),
                   (2, 4, 1,  4), (6, 1, 0.5,  4),
                   (0.1,  1, 1,  4), (6, 1,    0,  4),
                   # (0.5,  1, 1,  4),     (0.5,      0.2,  1,  4),
-                   (0.1,  0.5, 1,  4),     (100,  0.5,  1,  4),
+                   (0.1,  0.5, 1,  4),     (0.5,  0.2,  1,  4),
                  ]
 
 # %%
-fig, axs = plt.subplots(4,2,figsize=(6.3,5),constrained_layout=True,sharey=True,sharex=True)
+fig, axs = plt.subplots(4,2,figsize=(6.3,4),constrained_layout=True,sharey=True,sharex=True)
 
 for i,(k,g,p,periods) in enumerate(example_points):
     coeff = [1, 2*k, -(1+g**2),-2*k]
@@ -310,12 +310,12 @@ for i,(k,g,p,periods) in enumerate(example_points):
     ax.set_xlim(0,MAX_T/np.pi)
     ax.xaxis.get_major_locator().set_params(integer=True)
     ax.set_ylim(0,1)
-    ax.set_title(f'$\kappa={k},\Gamma={g},p={p}$')
+    ax.set_title(f'$\kappa={k},\Gamma={g},p={p}$',size=11)
 
     # ax.set_xlabel(r'$\tau (\pi)$')
     # ax.set_ylabel(r'$P_i$')
-fig.supxlabel(r'$\tau (\pi)$')
-fig.supylabel(r'$P_i$')
+fig.supxlabel(r'$\tau (\pi)$',size=11)
+fig.supylabel(r'$P_i$',size=11)
 
 
 fig.savefig('../images/8-panel-3-state-evolution.pdf')
@@ -562,7 +562,7 @@ gs = np.logspace(*g_exp_range,1000)
 
 ks, gs = np.meshgrid(ks,gs)
 
-twice_average_fidelities = half_of_res(ks,gs,0.999)# twice_average_fidelity(ks,gs)
+twice_average_fidelities = twice_average_fidelity(ks,gs)
 minus_fidelities = minus_fidelity(ks,gs)
 # maximum_fidelities = maximum_fidelity(ks,gs)
 # maximum_fidelities = np.abs((1-(gs/ks)**2))
@@ -584,20 +584,20 @@ difference = (np.log10(1-twice_average_fidelities+1e-9)-np.log10(1-expansion_fid
 colors
 
 # %% tags=[]
-fig, (axl,axm) = plt.subplots(1,2,figsize=(6.3,3),sharey=True,sharex=True,constrained_layout=True)
+fig, (axl,axm) = plt.subplots(1,2,figsize=(6.3,2.5),sharey=True,sharex=True,constrained_layout=True)
 
 Norm  = colors.Normalize(vmin=0, vmax=1, clip=True)
 
 noted_levels=[0.00001,0.0001,0.001,0.01,0.1,0.5,0.9,0.99,0.999,0.9999,0.99999]
 # noted_levels=[0.9,0.99,0.999]
 
-axl.set_ylabel('$\Gamma$')
+axl.set_ylabel('$\Gamma = d_{13}/d_{12}$')
 for ax, fidelities,title in [(axl,twice_average_fidelities,r"$2\langle P_{2}\rangle_t$"),(axm,1-minus_fidelities,r"$2\langle P_{3}\rangle_t$")]:#,(axr,np.abs(twice_average_fidelities-minus_fidelities),"expansion")]:
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlim(10**k_exp_range[0],10**k_exp_range[1])
     ax.set_ylim(10**g_exp_range[0],10**g_exp_range[1])
-    ax.set_xlabel('$\kappa$')
+    ax.set_xlabel('$\kappa\propto\Delta \cdot t_\pi$')
 
     k=7
     normalised_fidelies = (np.log10(1/(1 - (1 - 10**(-k))*fidelities - 0.5*10**(-k)) - 1))/(2*np.log10(2*10**k - 1)) + 1/2
@@ -607,7 +607,7 @@ for ax, fidelities,title in [(axl,twice_average_fidelities,r"$2\langle P_{2}\ran
     CS1 = ax.contour(ks,gs,fidelities,noted_levels, colors='k',linestyles='dashed',linewidths=0.5,alpha=0.5,zorder=20)
 
     fmt = {}
-    strs = [f"{n*100:.3f}%" for n in noted_levels]
+    strs = [f"{n*100:.3f}\%" for n in noted_levels]
     for l, s in zip(CS1.levels, strs):
         fmt[l] = s
 
@@ -632,7 +632,7 @@ axl.annotate(r"",
         arrowprops=dict(arrowstyle="<-", connectionstyle="arc3"),
            zorder=300)
 
-axl.text(15, 2*(15)**(1/2)+2, r"$\Gamma=2\sqrt{\kappa}$", va='bottom', zorder=300,rotation=26.5)
+axl.text(15, 2*(15)**(1/2)+2, r"$\Gamma=2\sqrt{\kappa}$", va='bottom', zorder=300,rotation=20)
 
 
 axm.annotate(r"",
@@ -641,7 +641,7 @@ axm.annotate(r"",
         arrowprops=dict(arrowstyle="<-", connectionstyle="arc3"),
            zorder=300)
 
-axm.text(40, 40+25, r"$\Gamma=\kappa$", va='bottom', zorder=300,rotation=45)
+axm.text(40, 40+25, r"$\Gamma=\kappa$", va='bottom', zorder=300,rotation=40)
 
 
 #     for k,g,_ in example_points:
